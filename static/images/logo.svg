@@ -1,0 +1,18 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" fill="none" stroke="#1e3a5f" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Outer head shape -->
+  <path d="M100 220 C40 180 15 120 25 70 L50 20 L70 60 C80 40 90 30 100 25 C110 30 120 40 130 60 L150 20 L175 70 C185 120 160 180 100 220 Z"/>
+  <!-- Left ear inner -->
+  <path d="M50 20 L60 45 L45 55"/>
+  <!-- Right ear inner -->
+  <path d="M150 20 L140 45 L155 55"/>
+  <!-- Face mask / eyes area -->
+  <path d="M55 95 C70 80 85 85 100 100 C115 85 130 80 145 95"/>
+  <!-- Left cheek -->
+  <path d="M45 110 C55 100 70 105 85 120"/>
+  <!-- Right cheek -->
+  <path d="M155 110 C145 100 130 105 115 120"/>
+  <!-- Nose -->
+  <ellipse cx="100" cy="150" rx="12" ry="10"/>
+  <!-- Nose line down -->
+  <path d="M100 160 L100 175"/>
+</svg>

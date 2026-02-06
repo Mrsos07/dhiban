@@ -1,0 +1,145 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}إعدادات الوكيل{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-gear me-2"></i>إعدادات وكيل الذكاء الاصطناعي
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">اسم الإعداد</label>
+                        <input type="text" name="name" class="form-control" 
+                               value="{{ settings.name }}" required>
+                    </div>
+                    
+                    <div class="row mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">نموذج الذكاء الاصطناعي</label>
+                            <select name="model_name" class="form-select">
+                                <option value="gpt-4o-mini" {% if settings.model_name == 'gpt-4o-mini' %}selected{% endif %}>
+                                    GPT-4o Mini (سريع وموفر)
+                                </option>
+                                <option value="gpt-4o" {% if settings.model_name == 'gpt-4o' %}selected{% endif %}>
+                                    GPT-4o (أقوى)
+                                </option>
+                                <option value="gpt-4-turbo" {% if settings.model_name == 'gpt-4-turbo' %}selected{% endif %}>
+                                    GPT-4 Turbo
+                                </option>
+                                <option value="gpt-3.5-turbo" {% if settings.model_name == 'gpt-3.5-turbo' %}selected{% endif %}>
+                                    GPT-3.5 Turbo (أرخص)
+                                </option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">Temperature</label>
+                            <input type="number" name="temperature" class="form-control" 
+                                   value="{{ settings.temperature }}" min="0" max="1" step="0.1">
+                            <small class="text-muted">0 = دقيق 1 = إبداعي</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label fw-bold">الحد الأقصى للكلمات</label>
+                            <input type="number" name="max_tokens" class="form-control" 
+                                   value="{{ settings.max_tokens }}" min="100" max="4000">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            System Prompt
+                            <i class="bi bi-info-circle text-muted" data-bs-toggle="tooltip" 
+                               title="التعليمات الأساسية التي تحدد شخصية وسلوك الوكيل"></i>
+                        </label>
+                        <textarea name="system_prompt" class="form-control font-monospace" 
+                                  rows="15" dir="rtl">{{ settings.system_prompt }}</textarea>
+                        <small class="text-muted">هذه التعليمات تحدد كيف يتصرف الوكيل ويرد على المستخدمين</small>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">رسالة الترحيب</label>
+                        <textarea name="welcome_message" class="form-control" 
+                                  rows="6" dir="rtl">{{ settings.welcome_message }}</textarea>
+                        <small class="text-muted">الرسالة التي تظهر عند بدء المحادثة</small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <div class="d-flex justify-content-between">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-check-lg me-1"></i>حفظ الإعدادات
+                        </button>
+                        <a href="{% url 'dashboard:agent_test' %}" class="btn btn-success btn-lg">
+                            <i class="bi bi-play-fill me-1"></i>تجربة الوكيل
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-key me-2"></i>حالة الاتصال
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <strong>OpenAI API:</strong>
+                    {% if openai_configured %}
+                    <span class="badge bg-success">متصل </span>
+                    {% else %}
+                    <span class="badge bg-danger">غير متصل</span>
+                    <p class="text-muted small mt-1">أضف OPENAI_API_KEY في ملف .env</p>
+                    {% endif %}
+                </div>
+                <div class="mb-3">
+                    <strong>Google Maps API:</strong>
+                    {% if google_configured %}
+                    <span class="badge bg-success">متصل </span>
+                    {% else %}
+                    <span class="badge bg-warning">غير متصل</span>
+                    <p class="text-muted small mt-1">أضف GOOGLE_MAPS_API_KEY في ملف .env</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <strong>WhatsApp API:</strong>
+                    {% if whatsapp_configured %}
+                    <span class="badge bg-success">متصل </span>
+                    {% else %}
+                    <span class="badge bg-warning">غير متصل</span>
+                    <p class="text-muted small mt-1">أضف WHATSAPP_ACCESS_TOKEN في ملف .env</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-lightbulb me-2"></i>نصائح
+            </div>
+            <div class="card-body">
+                <ul class="mb-0">
+                    <li class="mb-2"><strong>GPT-4o Mini:</strong> الأفضل للاستخدام اليومي</li>
+                    <li class="mb-2"><strong>Temperature منخفض:</strong> ردود أكثر دقة</li>
+                    <li class="mb-2"><strong>Temperature عالي:</strong> ردود أكثر إبداعية</li>
+                    <li><strong>System Prompt:</strong> كلما كان أوضح كان الوكيل أفضل</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl)
+})
+</script>
+{% endblock %}

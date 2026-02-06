@@ -1,0 +1,161 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ذيبان - الدليل الذكي{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/images/logo.svg">
+    <link rel="apple-touch-icon" href="/static/images/logo.svg">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #1e3a5f;
+            --secondary-color: #3d6cb9;
+            --accent-color: #5fa8d3;
+            --light-blue: #a7c7e7;
+            --dark-blue: #0d1b2a;
+        }
+        body {
+            font-family: 'Tajawal', 'Segoe UI', Tahoma, sans-serif;
+            direction: rtl;
+        }
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .navbar-brand img {
+            height: 40px;
+            width: auto;
+        }
+        .hero-section {
+            background: linear-gradient(135deg, var(--dark-blue) 0%, var(--primary-color) 50%, var(--secondary-color) 100%);
+            color: white;
+            padding: 100px 0;
+            min-height: 80vh;
+            display: flex;
+            align-items: center;
+        }
+        .feature-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            height: 100%;
+        }
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(30, 58, 95, 0.2);
+        }
+        .feature-icon {
+            font-size: 3rem;
+            color: var(--secondary-color);
+        }
+        .section-title {
+            position: relative;
+            margin-bottom: 50px;
+            color: var(--primary-color);
+        }
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            right: 50%;
+            transform: translateX(50%);
+            width: 80px;
+            height: 4px;
+            background: linear-gradient(90deg, var(--secondary-color), var(--accent-color));
+            border-radius: 2px;
+        }
+        .step-number {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin: 0 auto 20px;
+            box-shadow: 0 5px 15px rgba(30, 58, 95, 0.3);
+        }
+        .contact-section {
+            background: linear-gradient(180deg, #f8f9fa 0%, var(--light-blue) 100%);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            padding: 12px 30px;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--dark-blue), var(--primary-color));
+            transform: translateY(-2px);
+        }
+        .btn-outline-light:hover {
+            color: var(--primary-color);
+        }
+        footer {
+            background: var(--dark-blue);
+            color: #ccc;
+        }
+        .navbar {
+            background: linear-gradient(90deg, var(--dark-blue), var(--primary-color)) !important;
+        }
+        .how-it-works {
+            background: linear-gradient(180deg, #ffffff 0%, #f0f4f8 100%);
+        }
+        .card {
+            border: none;
+        }
+        .form-control:focus {
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 0.2rem rgba(61, 108, 185, 0.25);
+        }
+        .hero-logo {
+            max-width: 200px;
+            filter: brightness(0) invert(1);
+            opacity: 0.9;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <img src="/static/images/logo.svg" alt="ذيبان" style="filter: brightness(0) invert(1);">
+                ذيبان
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="#features">المميزات</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#how-it-works">كيف يعمل</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#contact">تواصل معنا</a></li>
+                </ul>
+                <a href="/admin-login/" class="btn btn-outline-light">دخول الإدارة</a>
+            </div>
+        </div>
+    </nav>
+
+    {% block content %}{% endblock %}
+
+    <footer class="py-4">
+        <div class="container text-center">
+            <img src="/static/images/logo.svg" alt="ذيبان" style="height: 40px; filter: brightness(0) invert(1); opacity: 0.7;" class="mb-2">
+            <p class="mb-0">جميع الحقوق محفوظة &copy; 2024 ذيبان - الدليل الذكي</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

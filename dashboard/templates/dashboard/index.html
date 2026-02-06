@@ -1,0 +1,184 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}الرئيسية{% endblock %}
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1">المستهلكون</p>
+                    <h3 class="stat-number mb-0">{{ stats.users_count }}</h3>
+                    <small class="text-success"><i class="bi bi-arrow-up"></i> {{ stats.users_today }} اليوم</small>
+                </div>
+                <div class="stat-icon bg-primary">
+                    <i class="bi bi-people"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1">الموردون</p>
+                    <h3 class="stat-number mb-0">{{ stats.suppliers_count }}</h3>
+                    <small class="text-info"><i class="bi bi-star"></i> {{ stats.partners_count }} شريك</small>
+                </div>
+                <div class="stat-icon bg-success">
+                    <i class="bi bi-shop"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1">المحادثات</p>
+                    <h3 class="stat-number mb-0">{{ stats.conversations_count }}</h3>
+                    <small class="text-warning"><i class="bi bi-clock"></i> {{ stats.active_conversations }} نشطة</small>
+                </div>
+                <div class="stat-icon bg-warning">
+                    <i class="bi bi-chat-dots"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1">الطلبات</p>
+                    <h3 class="stat-number mb-0">{{ stats.requests_count }}</h3>
+                    <small class="text-success"><i class="bi bi-check-circle"></i> {{ stats.completed_requests }} مكتمل</small>
+                </div>
+                <div class="stat-icon bg-info">
+                    <i class="bi bi-clipboard-data"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Recent Users -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-people me-2"></i>آخر المستهلكين</span>
+                <a href="{% url 'dashboard:users_list' %}" class="btn btn-sm btn-outline-primary">عرض الكل</a>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>الاسم</th>
+                            <th>رقم الهاتف</th>
+                            <th>التسجيل</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in recent_users %}
+                        <tr>
+                            <td>{{ user.name|default:"غير محدد" }}</td>
+                            <td dir="ltr">{{ user.phone_number }}</td>
+                            <td>{{ user.registration_date|date:"Y/m/d" }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">لا يوجد مستهلكون</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Suppliers -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-shop me-2"></i>آخر الموردين</span>
+                <a href="{% url 'dashboard:suppliers_list' %}" class="btn btn-sm btn-outline-primary">عرض الكل</a>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>الاسم</th>
+                            <th>التصنيف</th>
+                            <th>التقييم</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for supplier in recent_suppliers %}
+                        <tr>
+                            <td>
+                                {{ supplier.name_ar }}
+                                {% if supplier.is_partner %}<span class="badge badge-partner">شريك</span>{% endif %}
+                            </td>
+                            <td>{{ supplier.category.name_ar }}</td>
+                            <td><i class="bi bi-star-fill text-warning"></i> {{ supplier.rating }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="3" class="text-center text-muted py-4">لا يوجد موردون</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-graph-up me-2"></i>إحصائيات الأسبوع
+            </div>
+            <div class="card-body">
+                <canvas id="weeklyChart" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ctx = document.getElementById('weeklyChart').getContext('2d');
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: {{ chart_labels|safe }},
+        datasets: [{
+            label: 'المحادثات',
+            data: {{ chart_conversations|safe }},
+            borderColor: '#3d6cb9',
+            backgroundColor: 'rgba(61, 108, 185, 0.1)',
+            fill: true,
+            tension: 0.4
+        }, {
+            label: 'الطلبات',
+            data: {{ chart_requests|safe }},
+            borderColor: '#28a745',
+            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+            fill: true,
+            tension: 0.4
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'top' }
+        },
+        scales: {
+            y: { beginAtZero: true }
+        }
+    }
+});
+</script>
+{% endblock %}

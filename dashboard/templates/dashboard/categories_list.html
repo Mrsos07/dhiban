@@ -1,0 +1,89 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}التصنيفات{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">التصنيفات</h4>
+        <small class="text-muted">إجمالي {{ categories.count }} تصنيف</small>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCategoryModal">
+        <i class="bi bi-plus-lg me-1"></i>إضافة تصنيف
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>الأيقونة</th>
+                    <th>الاسم بالعربية</th>
+                    <th>الاسم بالإنجليزية</th>
+                    <th>عدد الموردين</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for cat in categories %}
+                <tr>
+                    <td><i class="bi bi-{{ cat.icon|default:'folder' }} fs-4"></i></td>
+                    <td><strong>{{ cat.name_ar }}</strong></td>
+                    <td>{{ cat.name_en|default:"-" }}</td>
+                    <td>{{ cat.suppliers.count }}</td>
+                    <td>
+                        {% if cat.is_active %}
+                        <span class="badge bg-success">نشط</span>
+                        {% else %}
+                        <span class="badge bg-secondary">غير نشط</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ cat.id }}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-5">لا توجد تصنيفات</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Category Modal -->
+<div class="modal fade" id="addCategoryModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'dashboard:category_add' %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title">إضافة تصنيف جديد</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">الاسم بالعربية *</label>
+                        <input type="text" name="name_ar" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">الاسم بالإنجليزية</label>
+                        <input type="text" name="name_en" class="form-control">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">الأيقونة (Bootstrap Icons)</label>
+                        <input type="text" name="icon" class="form-control" placeholder="folder">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-primary">حفظ</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

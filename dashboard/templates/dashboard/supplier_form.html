@@ -1,0 +1,102 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}{% if supplier %}تعديل مورد{% else %}إضافة مورد{% endif %}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-{% if supplier %}pencil{% else %}plus-lg{% endif %} me-2"></i>
+        {% if supplier %}تعديل: {{ supplier.name_ar }}{% else %}إضافة مورد جديد{% endif %}
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">الاسم بالعربية *</label>
+                    <input type="text" name="name_ar" class="form-control" value="{{ supplier.name_ar|default:'' }}" required>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">الاسم بالإنجليزية</label>
+                    <input type="text" name="name_en" class="form-control" value="{{ supplier.name_en|default:'' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">التصنيف *</label>
+                    <select name="category" class="form-select" required>
+                        <option value="">اختر التصنيف</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if supplier.category_id == cat.id %}selected{% endif %}>{{ cat.name_ar }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">التصنيف الفرعي</label>
+                    <select name="subcategory" class="form-select">
+                        <option value="">اختر التصنيف الفرعي</option>
+                        {% for sub in subcategories %}
+                        <option value="{{ sub.id }}" {% if supplier.subcategory_id == sub.id %}selected{% endif %}>{{ sub.name_ar }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">الوصف</label>
+                    <textarea name="description" class="form-control" rows="3">{{ supplier.description|default:'' }}</textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">رقم الهاتف الرئيسي</label>
+                    <input type="text" name="phone" class="form-control" dir="ltr" value="{{ supplier.get_primary_phone|default:'' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">البريد الإلكتروني</label>
+                    <input type="email" name="email" class="form-control" dir="ltr" value="{{ supplier.email|default:'' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">الموقع الإلكتروني</label>
+                    <input type="url" name="website" class="form-control" dir="ltr" value="{{ supplier.website|default:'' }}">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">معرف Google Maps</label>
+                    <input type="text" name="google_maps_place_id" class="form-control" dir="ltr" value="{{ supplier.google_maps_place_id|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">خط العرض (Latitude)</label>
+                    <input type="number" step="any" name="lat" class="form-control" dir="ltr" value="{{ supplier.location.lat|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">خط الطول (Longitude)</label>
+                    <input type="number" step="any" name="lng" class="form-control" dir="ltr" value="{{ supplier.location.lng|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">العنوان</label>
+                    <input type="text" name="address" class="form-control" value="{{ supplier.location.address|default:'' }}">
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check mt-4">
+                        <input type="checkbox" name="is_partner" class="form-check-input" id="is_partner" {% if supplier.is_partner %}checked{% endif %}>
+                        <label class="form-check-label" for="is_partner">شريك رسمي</label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check mt-4">
+                        <input type="checkbox" name="is_verified" class="form-check-input" id="is_verified" {% if supplier.is_verified %}checked{% endif %}>
+                        <label class="form-check-label" for="is_verified">موثق</label>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="form-check mt-4">
+                        <input type="checkbox" name="is_active" class="form-check-input" id="is_active" {% if supplier.is_active or not supplier %}checked{% endif %}>
+                        <label class="form-check-label" for="is_active">نشط</label>
+                    </div>
+                </div>
+            </div>
+            <hr>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg me-1"></i>حفظ
+                </button>
+                <a href="{% url 'dashboard:suppliers_list' %}" class="btn btn-secondary">إلغاء</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+﻿{% extends 'base.html' %}
+
+{% block title %}الحساب مقفل - ذيبان{% endblock %}
+
+{% block content %}
+<section class="py-5" style="min-height: 80vh; display: flex; align-items: center; background: linear-gradient(135deg, #f0f4f8 0%, #a7c7e7 100%);">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-5">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body p-5 text-center">
+                        <i class="bi bi-shield-exclamation display-1 text-danger mb-4"></i>
+                        <h3 class="mb-3">الحساب مقفل مؤقتاً</h3>
+                        <p class="text-muted mb-4">
+                            تم قفل حسابك مؤقتاً بسبب محاولات تسجيل دخول فاشلة متعددة.
+                            يرجى المحاولة مرة أخرى بعد 15 دقيقة.
+                        </p>
+                        <a href="/" class="btn btn-primary">
+                            <i class="bi bi-house me-2"></i>العودة للصفحة الرئيسية
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

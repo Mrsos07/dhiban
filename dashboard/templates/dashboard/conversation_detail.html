@@ -1,0 +1,50 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}تفاصيل المحادثة{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">معلومات المحادثة</div>
+            <div class="card-body">
+                <p><strong>المستخدم:</strong> {{ conversation.user.name|default:conversation.user.phone_number }}</p>
+                <p><strong>النوع:</strong> {{ conversation.get_intent_detected_display }}</p>
+                <p><strong>البداية:</strong> {{ conversation.started_at|date:"Y/m/d H:i" }}</p>
+                <p><strong>النهاية:</strong> {{ conversation.ended_at|date:"Y/m/d H:i"|default:"مستمرة" }}</p>
+                <p><strong>عدد الرسائل:</strong> {{ conversation.get_messages_count }}</p>
+                <p><strong>الحالة:</strong> 
+                    {% if conversation.resolved %}
+                    <span class="badge bg-success">تم الحل</span>
+                    {% else %}
+                    <span class="badge bg-warning">قيد الانتظار</span>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">الرسائل</div>
+            <div class="card-body" style="max-height: 500px; overflow-y: auto;">
+                {% for msg in conversation.messages %}
+                <div class="mb-3 p-3 rounded {% if msg.role == 'user' %}bg-light{% else %}bg-primary bg-opacity-10{% endif %}">
+                    <div class="d-flex justify-content-between mb-1">
+                        <strong>{% if msg.role == 'user' %}المستخدم{% else %}البوت{% endif %}</strong>
+                        <small class="text-muted">{{ msg.timestamp }}</small>
+                    </div>
+                    <p class="mb-0">{{ msg.content }}</p>
+                </div>
+                {% empty %}
+                <p class="text-center text-muted">لا توجد رسائل</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+<div class="mt-3">
+    <a href="{% url 'dashboard:conversations_list' %}" class="btn btn-secondary">
+        <i class="bi bi-arrow-right me-1"></i>رجوع
+    </a>
+</div>
+{% endblock %}

@@ -1,0 +1,85 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}المحادثات{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">المحادثات</h4>
+        <small class="text-muted">إجمالي {{ conversations.count }} محادثة</small>
+    </div>
+    <a href="{% url 'dashboard:export_conversations' %}" class="btn btn-outline-success">
+        <i class="bi bi-download me-1"></i>تصدير
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <form method="get" class="row g-2">
+            <div class="col-md-4">
+                <input type="text" name="q" class="form-control" placeholder="بحث..." value="{{ request.GET.q }}">
+            </div>
+            <div class="col-md-3">
+                <select name="intent" class="form-select">
+                    <option value="">كل الأنواع</option>
+                    <option value="search" {% if request.GET.intent == 'search' %}selected{% endif %}>بحث</option>
+                    <option value="inquiry" {% if request.GET.intent == 'inquiry' %}selected{% endif %}>استفسار</option>
+                    <option value="complaint" {% if request.GET.intent == 'complaint' %}selected{% endif %}>شكوى</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">الكل</option>
+                    <option value="resolved" {% if request.GET.status == 'resolved' %}selected{% endif %}>تم الحل</option>
+                    <option value="pending" {% if request.GET.status == 'pending' %}selected{% endif %}>قيد الانتظار</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">بحث</button>
+            </div>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>المستخدم</th>
+                    <th>النوع</th>
+                    <th>الرسائل</th>
+                    <th>البداية</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for conv in conversations %}
+                <tr>
+                    <td>{{ conv.user.name|default:conv.user.phone_number }}</td>
+                    <td>
+                        <span class="badge bg-{% if conv.intent_detected == 'search' %}primary{% elif conv.intent_detected == 'complaint' %}danger{% else %}secondary{% endif %}">
+                            {{ conv.get_intent_detected_display }}
+                        </span>
+                    </td>
+                    <td>{{ conv.get_messages_count }}</td>
+                    <td>{{ conv.started_at|date:"Y/m/d H:i" }}</td>
+                    <td>
+                        {% if conv.resolved %}
+                        <span class="badge bg-success">تم الحل</span>
+                        {% else %}
+                        <span class="badge bg-warning">قيد الانتظار</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'dashboard:conversation_detail' conv.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-5">لا توجد محادثات</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

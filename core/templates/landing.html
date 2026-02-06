@@ -1,0 +1,366 @@
+﻿{% extends 'base.html' %}
+
+{% block content %}
+<!-- قسم البطل -->
+<section class="hero-section">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-7">
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <span class="badge bg-light text-primary px-3 py-2">
+                        <i class="bi bi-robot me-1"></i> وكيل ذكاء اصطناعي
+                    </span>
+                    <span class="badge bg-success px-3 py-2">
+                        <i class="bi bi-whatsapp me-1"></i> عبر واتساب
+                    </span>
+                </div>
+                <h1 class="display-4 fw-bold mb-4">ذيبان - دليلك الذكي في عنيزة</h1>
+                <p class="lead mb-4">وكيل ذكاء اصطناعي يساعدك في الوصول إلى أفضل الخدمات والأماكن في عنيزة. فقط أرسل ما تحتاجه عبر واتساب وسيجد لك الحل الأمثل!</p>
+                <div class="bg-white bg-opacity-10 rounded-3 p-4 mb-4">
+                    <p class="mb-2 fw-bold"><i class="bi bi-chat-quote me-2"></i>مثال:</p>
+                    <p class="mb-0 fst-italic">"أحتاج كهربائي لتركيب إنارات وتصليح الأبواب"</p>
+                    <p class="text-white-50 small mt-2 mb-0"><i class="bi bi-arrow-left me-1"></i> ذيبان يبحث ويرسل لك أفضل الخيارات فورا!</p>
+                </div>
+                <div class="d-flex gap-3 flex-wrap">
+                    <a href="https://wa.me/966500000000" target="_blank" class="btn btn-success btn-lg px-4">
+                        <i class="bi bi-whatsapp me-2"></i>ابدأ المحادثة
+                    </a>
+                    <a href="#how-it-works" class="btn btn-outline-light btn-lg px-4">كيف يعمل</a>
+                </div>
+            </div>
+            <div class="col-lg-5 text-center mt-5 mt-lg-0">
+                <div class="position-relative">
+                    <img src="/static/images/logo.svg" alt="ذيبان" class="hero-logo" style="max-width: 250px; filter: brightness(0) invert(1); opacity: 0.9;">
+                    <div class="position-absolute" style="bottom: -20px; left: 50%; transform: translateX(-50%);">
+                        <span class="badge bg-white text-primary px-4 py-2 fs-6">
+                            <i class="bi bi-geo-alt-fill me-1"></i> عنيزة
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- قسم مثال عملي -->
+<section class="py-5 bg-light">
+    <div class="container">
+        <h2 class="text-center section-title">شاهد كيف يعمل ذيبان</h2>
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="card shadow-lg border-0 overflow-hidden">
+                    <div class="row g-0">
+                        <div class="col-md-6 bg-success text-white p-4">
+                            <div class="d-flex align-items-center mb-3">
+                                <i class="bi bi-whatsapp fs-3 me-2"></i>
+                                <span class="fw-bold">محادثة واتساب</span>
+                            </div>
+                            <div class="chat-demo">
+                                <div class="chat-bubble user-bubble mb-3">
+                                    <small class="text-white-50">أنت</small>
+                                    <p class="mb-0">السلام عليكم أحتاج كهربائي يركب لي إنارات في البيت ويصلح باب الكراج</p>
+                                </div>
+                                <div class="chat-bubble bot-bubble mb-3">
+                                    <small class="text-white-50">ذيبان </small>
+                                    <p class="mb-0">وعليكم السلام! <br>جاري البحث عن أفضل كهربائي في عنيزة...</p>
+                                </div>
+                                <div class="chat-bubble bot-bubble">
+                                    <small class="text-white-50">ذيبان </small>
+                                    <p class="mb-0">وجدت لك:<br> <strong>مؤسسة النور للكهرباء</strong><br> حي الفيحاء<br> تقييم 4.8<br> للتواصل اضغط هنا</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 p-4 d-flex flex-column justify-content-center">
+                            <h4 class="mb-4"><i class="bi bi-magic me-2 text-primary"></i>ماذا يحدث خلف الكواليس</h4>
+                            <ul class="list-unstyled">
+                                <li class="mb-3 d-flex">
+                                    <span class="badge bg-primary rounded-circle me-3" style="width: 30px; height: 30px; line-height: 22px;">1</span>
+                                    <span>ذيبان يفهم طلبك باستخدام الذكاء الاصطناعي</span>
+                                </li>
+                                <li class="mb-3 d-flex">
+                                    <span class="badge bg-primary rounded-circle me-3" style="width: 30px; height: 30px; line-height: 22px;">2</span>
+                                    <span>يبحث في قاعدة بيانات مقدمي الخدمات في عنيزة</span>
+                                </li>
+                                <li class="mb-3 d-flex">
+                                    <span class="badge bg-primary rounded-circle me-3" style="width: 30px; height: 30px; line-height: 22px;">3</span>
+                                    <span>يختار الأفضل بناء على التقييمات والموقع</span>
+                                </li>
+                                <li class="d-flex">
+                                    <span class="badge bg-primary rounded-circle me-3" style="width: 30px; height: 30px; line-height: 22px;">4</span>
+                                    <span>يرسل لك النتيجة مع معلومات التواصل</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- قسم المميزات -->
+<section id="features" class="py-5">
+    <div class="container">
+        <h2 class="text-center section-title">لماذا ذيبان</h2>
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="card feature-card p-4 text-center">
+                    <i class="bi bi-robot feature-icon mb-3"></i>
+                    <h4>ذكاء اصطناعي</h4>
+                    <p class="text-muted">يفهم طلبك بلغتك الطبيعية ويجد لك ما تحتاجه بدقة.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card feature-card p-4 text-center">
+                    <i class="bi bi-whatsapp feature-icon mb-3" style="color: #25D366;"></i>
+                    <h4>عبر واتساب</h4>
+                    <p class="text-muted">لا تحتاج تطبيق جديد. فقط أرسل رسالة واتساب!</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card feature-card p-4 text-center">
+                    <i class="bi bi-geo-alt feature-icon mb-3"></i>
+                    <h4>متخصص في عنيزة</h4>
+                    <p class="text-muted">نعرف كل زاوية في عنيزة ونوصلك بأفضل الخدمات.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card feature-card p-4 text-center">
+                    <i class="bi bi-lightning-charge feature-icon mb-3"></i>
+                    <h4>سريع جدا</h4>
+                    <p class="text-muted">احصل على النتائج خلال ثوان معدودة.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card feature-card p-4 text-center">
+                    <i class="bi bi-star feature-icon mb-3"></i>
+                    <h4>موثوق</h4>
+                    <p class="text-muted">جميع مقدمي الخدمات موثقين ومراجعين.</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card feature-card p-4 text-center">
+                    <i class="bi bi-currency-dollar feature-icon mb-3"></i>
+                    <h4>مجاني</h4>
+                    <p class="text-muted">استخدم ذيبان مجانا بدون أي رسوم.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- قسم كيف يعمل -->
+<section id="how-it-works" class="py-5 how-it-works">
+    <div class="container">
+        <h2 class="text-center section-title">كيف تستخدم ذيبان</h2>
+        <div class="row g-4 justify-content-center">
+            <div class="col-lg-3 col-md-6 text-center">
+                <div class="step-card p-4">
+                    <div class="step-icon-wrapper mb-4">
+                        <div class="step-icon bg-success">
+                            <i class="bi bi-whatsapp fs-1"></i>
+                        </div>
+                        <span class="step-badge"></span>
+                    </div>
+                    <h5 class="fw-bold">افتح واتساب</h5>
+                    <p class="text-muted mb-0">أرسل رسالة لرقم ذيبان أو اضغط على زر "ابدأ المحادثة"</p>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 text-center">
+                <div class="step-card p-4">
+                    <div class="step-icon-wrapper mb-4">
+                        <div class="step-icon bg-primary">
+                            <i class="bi bi-pencil-square fs-1"></i>
+                        </div>
+                        <span class="step-badge"></span>
+                    </div>
+                    <h5 class="fw-bold">اكتب طلبك</h5>
+                    <p class="text-muted mb-0">اشرح ما تحتاجه بكلماتك الخاصة بأي طريقة تريدها</p>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 text-center">
+                <div class="step-card p-4">
+                    <div class="step-icon-wrapper mb-4">
+                        <div class="step-icon bg-warning">
+                            <i class="bi bi-search fs-1"></i>
+                        </div>
+                        <span class="step-badge"></span>
+                    </div>
+                    <h5 class="fw-bold">ذيبان يبحث</h5>
+                    <p class="text-muted mb-0">الذكاء الاصطناعي يحلل طلبك ويبحث في قاعدة البيانات</p>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 text-center">
+                <div class="step-card p-4">
+                    <div class="step-icon-wrapper mb-4">
+                        <div class="step-icon bg-info">
+                            <i class="bi bi-check-circle fs-1"></i>
+                        </div>
+                        <span class="step-badge"></span>
+                    </div>
+                    <h5 class="fw-bold">استلم النتيجة</h5>
+                    <p class="text-muted mb-0">تحصل على أفضل الخيارات مع معلومات التواصل والموقع</p>
+                </div>
+            </div>
+        </div>
+        <div class="text-center mt-5">
+            <a href="https://wa.me/966500000000" target="_blank" class="btn btn-success btn-lg px-5">
+                <i class="bi bi-whatsapp me-2"></i>جرب ذيبان الآن
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- قسم الخدمات -->
+<section class="py-5 bg-light">
+    <div class="container">
+        <h2 class="text-center section-title">ماذا يمكنك أن تطلب</h2>
+        <div class="row g-3 justify-content-center">
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> كهربائي</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> نجار</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> سباك</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> مطاعم</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> مقاهي</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> صيدليات</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> ورش سيارات</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> عقارات</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> إلكترونيات</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2"> تسوق</span></div>
+            <div class="col-auto"><span class="badge bg-primary fs-6 px-3 py-2">والمزيد...</span></div>
+        </div>
+    </div>
+</section>
+
+<!-- قسم التواصل -->
+<section id="contact" class="contact-section py-5">
+    <div class="container">
+        <h2 class="text-center section-title">تواصل معنا</h2>
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <form method="post" action="#">
+                            {% csrf_token %}
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">الاسم الكامل</label>
+                                    <input type="text" class="form-control" placeholder="أدخل اسمك الكامل" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">البريد الإلكتروني</label>
+                                    <input type="email" class="form-control" placeholder="example@email.com" required>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">الموضوع</label>
+                                    <input type="text" class="form-control" placeholder="موضوع الرسالة" required>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">الرسالة</label>
+                                    <textarea class="form-control" rows="5" placeholder="اكتب رسالتك هنا..." required></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                                        <i class="bi bi-send me-2"></i>إرسال الرسالة
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-5 text-center">
+            <div class="col-md-4 mb-4">
+                <div class="p-3">
+                    <i class="bi bi-whatsapp display-5 mb-3" style="color: #25D366;"></i>
+                    <h5>واتساب</h5>
+                    <p class="text-muted mb-0" dir="ltr">+966 50 000 0000</p>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="p-3">
+                    <i class="bi bi-envelope display-5 mb-3" style="color: var(--secondary-color);"></i>
+                    <h5>البريد الإلكتروني</h5>
+                    <p class="text-muted mb-0">info@dhiban.sa</p>
+                </div>
+            </div>
+            <div class="col-md-4 mb-4">
+                <div class="p-3">
+                    <i class="bi bi-geo-alt display-5 mb-3" style="color: var(--secondary-color);"></i>
+                    <h5>الموقع</h5>
+                    <p class="text-muted mb-0">عنيزة القصيم السعودية</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-demo {
+        font-size: 0.9rem;
+    }
+    .chat-bubble {
+        background: rgba(255,255,255,0.15);
+        border-radius: 15px;
+        padding: 12px 15px;
+        max-width: 90%;
+    }
+    .user-bubble {
+        margin-right: auto;
+        border-bottom-right-radius: 5px;
+    }
+    .bot-bubble {
+        margin-left: auto;
+        border-bottom-left-radius: 5px;
+        background: rgba(255,255,255,0.25);
+    }
+    .step-card {
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        transition: transform 0.3s ease;
+        height: 100%;
+    }
+    .step-card:hover {
+        transform: translateY(-10px);
+    }
+    .step-icon-wrapper {
+        position: relative;
+        display: inline-block;
+    }
+    .step-icon {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        margin: 0 auto;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    }
+    .step-icon.bg-success { background: linear-gradient(135deg, #25D366, #128C7E); }
+    .step-icon.bg-primary { background: linear-gradient(135deg, #1e3a5f, #3d6cb9); }
+    .step-icon.bg-warning { background: linear-gradient(135deg, #ffc107, #fd7e14); }
+    .step-icon.bg-info { background: linear-gradient(135deg, #17a2b8, #20c997); }
+    .step-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        width: 35px;
+        height: 35px;
+        background: linear-gradient(135deg, #1e3a5f, #3d6cb9);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.1rem;
+        border: 3px solid white;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}

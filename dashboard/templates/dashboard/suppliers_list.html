@@ -1,0 +1,114 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}إدارة الموردين{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">الموردون</h4>
+        <small class="text-muted">إجمالي {{ suppliers.count }} مورد</small>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'dashboard:export_suppliers' %}" class="btn btn-outline-success">
+            <i class="bi bi-download me-1"></i>تصدير
+        </a>
+        <a href="{% url 'dashboard:supplier_add' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg me-1"></i>إضافة مورد
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <form method="get" class="row g-2">
+            <div class="col-md-4">
+                <input type="text" name="q" class="form-control" placeholder="بحث..." value="{{ request.GET.q }}">
+            </div>
+            <div class="col-md-3">
+                <select name="category" class="form-select">
+                    <option value="">كل التصنيفات</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if request.GET.category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name_ar }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="status" class="form-select">
+                    <option value="">الكل</option>
+                    <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>نشط</option>
+                    <option value="partner" {% if request.GET.status == 'partner' %}selected{% endif %}>شريك</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">بحث</button>
+            </div>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>الاسم</th>
+                    <th>التصنيف</th>
+                    <th>الهاتف</th>
+                    <th>التقييم</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for supplier in suppliers %}
+                <tr>
+                    <td>
+                        <strong>{{ supplier.name_ar }}</strong>
+                        {% if supplier.is_partner %}<span class="badge bg-warning">شريك</span>{% endif %}
+                        {% if supplier.is_verified %}<i class="bi bi-patch-check-fill text-primary"></i>{% endif %}
+                    </td>
+                    <td>{{ supplier.category.name_ar }}</td>
+                    <td dir="ltr">{{ supplier.get_primary_phone|default:"-" }}</td>
+                    <td><i class="bi bi-star-fill text-warning"></i> {{ supplier.rating }}</td>
+                    <td>
+                        {% if supplier.is_active %}
+                        <span class="badge bg-success">نشط</span>
+                        {% else %}
+                        <span class="badge bg-secondary">غير نشط</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'dashboard:supplier_edit' supplier.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i>
+                        </a>
+                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal{{ supplier.id }}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+                <!-- Delete Modal -->
+                <div class="modal fade" id="deleteModal{{ supplier.id }}" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">تأكيد الحذف</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                هل أنت متأكد من حذف "{{ supplier.name_ar }}"؟
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                                <form action="{% url 'dashboard:supplier_delete' supplier.id %}" method="post" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger">حذف</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-5">لا يوجد موردون</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

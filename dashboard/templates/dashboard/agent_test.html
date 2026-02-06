@@ -1,0 +1,238 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}تجربة الوكيل{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-robot me-2"></i>محادثة تجريبية مع ذيبان</span>
+                <button class="btn btn-sm btn-outline-danger" onclick="clearChat()">
+                    <i class="bi bi-trash me-1"></i>مسح المحادثة
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div id="chatContainer" class="chat-container p-3" style="height: 500px; overflow-y: auto; background: #f8f9fa;">
+                    <!-- رسالة الترحيب -->
+                    <div class="chat-message bot-message mb-3">
+                        <div class="message-avatar"></div>
+                        <div class="message-content">
+                            <div class="message-bubble">{{ welcome_message|linebreaks }}</div>
+                            <small class="text-muted">ذيبان</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-3 border-top">
+                    <form id="chatForm" onsubmit="sendMessage(event)">
+                        <div class="input-group">
+                            <input type="text" id="userInput" class="form-control form-control-lg" 
+                                   placeholder="اكتب رسالتك هنا..." autocomplete="off">
+                            <button type="submit" class="btn btn-primary btn-lg" id="sendBtn">
+                                <i class="bi bi-send"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>معلومات الوكيل
+            </div>
+            <div class="card-body">
+                <p><strong>النموذج:</strong> {{ settings.model_name }}</p>
+                <p><strong>Temperature:</strong> {{ settings.temperature }}</p>
+                <p><strong>الحالة:</strong> 
+                    {% if api_configured %}
+                    <span class="badge bg-success">متصل</span>
+                    {% else %}
+                    <span class="badge bg-warning">غير متصل (وضع محلي)</span>
+                    {% endif %}
+                </p>
+                <a href="{% url 'dashboard:agent_settings' %}" class="btn btn-outline-primary btn-sm w-100">
+                    <i class="bi bi-gear me-1"></i>إعدادات الوكيل
+                </a>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-lightbulb me-2"></i>أمثلة للتجربة
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-secondary text-start" onclick="setExample('أبي كهربائي يركب إنارات')">
+                         أبي كهربائي يركب إنارات
+                    </button>
+                    <button class="btn btn-outline-secondary text-start" onclick="setExample('وين أقرب مطعم')">
+                         وين أقرب مطعم
+                    </button>
+                    <button class="btn btn-outline-secondary text-start" onclick="setExample('أحتاج سباك يصلح المغسلة')">
+                         أحتاج سباك يصلح المغسلة
+                    </button>
+                    <button class="btn btn-outline-secondary text-start" onclick="setExample('صيدلية قريبة')">
+                         صيدلية قريبة
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-message {
+        display: flex;
+        gap: 10px;
+        max-width: 85%;
+    }
+    .bot-message {
+        align-self: flex-start;
+    }
+    .user-message {
+        align-self: flex-end;
+        flex-direction: row-reverse;
+        margin-right: auto;
+        margin-left: 0;
+    }
+    .message-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #1e3a5f, #3d6cb9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
+    .user-message .message-avatar {
+        background: linear-gradient(135deg, #28a745, #20c997);
+    }
+    .message-bubble {
+        background: white;
+        padding: 12px 16px;
+        border-radius: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+    .user-message .message-bubble {
+        background: linear-gradient(135deg, #1e3a5f, #3d6cb9);
+        color: white;
+    }
+    .typing-indicator {
+        display: flex;
+        gap: 5px;
+        padding: 15px;
+    }
+    .typing-indicator span {
+        width: 8px;
+        height: 8px;
+        background: #999;
+        border-radius: 50%;
+        animation: typing 1s infinite;
+    }
+    .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typing {
+        0%, 100% { opacity: 0.3; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.2); }
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const chatContainer = document.getElementById('chatContainer');
+const userInput = document.getElementById('userInput');
+const sendBtn = document.getElementById('sendBtn');
+
+function addMessage(content, isUser = false) {
+    const messageDiv = document.createElement('div');
+    messageDiv.className = chat-message  mb-3;
+    messageDiv.innerHTML = 
+        <div class="message-avatar"></div>
+        <div class="message-content">
+            <div class="message-bubble"></div>
+            <small class="text-muted"></small>
+        </div>
+    ;
+    chatContainer.appendChild(messageDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function showTyping() {
+    const typingDiv = document.createElement('div');
+    typingDiv.id = 'typingIndicator';
+    typingDiv.className = 'chat-message bot-message mb-3';
+    typingDiv.innerHTML = 
+        <div class="message-avatar"></div>
+        <div class="message-content">
+            <div class="message-bubble">
+                <div class="typing-indicator">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        </div>
+    ;
+    chatContainer.appendChild(typingDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
+function hideTyping() {
+    const typing = document.getElementById('typingIndicator');
+    if (typing) typing.remove();
+}
+
+async function sendMessage(e) {
+    e.preventDefault();
+    const message = userInput.value.trim();
+    if (!message) return;
+    
+    addMessage(message, true);
+    userInput.value = '';
+    sendBtn.disabled = true;
+    showTyping();
+    
+    try {
+        const response = await fetch('{% url "dashboard:agent_chat" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({ message: message })
+        });
+        
+        const data = await response.json();
+        hideTyping();
+        addMessage(data.response || 'حدث خطأ في الاستجابة');
+    } catch (error) {
+        hideTyping();
+        addMessage('عذرا حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.');
+    }
+    
+    sendBtn.disabled = false;
+    userInput.focus();
+}
+
+function setExample(text) {
+    userInput.value = text;
+    userInput.focus();
+}
+
+function clearChat() {
+    chatContainer.innerHTML = 
+        <div class="chat-message bot-message mb-3">
+            <div class="message-avatar"></div>
+            <div class="message-content">
+                <div class="message-bubble">{{ welcome_message|linebreaks }}</div>
+                <small class="text-muted">ذيبان</small>
+            </div>
+        </div>
+    ;
+}
+</script>
+{% endblock %}

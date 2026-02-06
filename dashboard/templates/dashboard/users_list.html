@@ -1,0 +1,73 @@
+﻿{% extends 'dashboard/base.html' %}
+
+{% block page_title %}إدارة المستهلكين{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-0">المستهلكون</h4>
+        <small class="text-muted">إجمالي {{ users.count }} مستهلك</small>
+    </div>
+    <a href="{% url 'dashboard:export_users' %}" class="btn btn-outline-success">
+        <i class="bi bi-download me-1"></i>تصدير
+    </a>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <form method="get" class="row g-2">
+            <div class="col-md-5">
+                <input type="text" name="q" class="form-control" placeholder="بحث بالاسم أو رقم الهاتف..." value="{{ request.GET.q }}">
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-select">
+                    <option value="">الكل</option>
+                    <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>نشط</option>
+                    <option value="inactive" {% if request.GET.status == 'inactive' %}selected{% endif %}>غير نشط</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">بحث</button>
+            </div>
+        </form>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>الاسم</th>
+                    <th>رقم الهاتف</th>
+                    <th>تاريخ التسجيل</th>
+                    <th>آخر تفاعل</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.name|default:"غير محدد" }}</td>
+                    <td dir="ltr">{{ user.phone_number }}</td>
+                    <td>{{ user.registration_date|date:"Y/m/d H:i" }}</td>
+                    <td>{{ user.last_interaction|date:"Y/m/d H:i" }}</td>
+                    <td>
+                        {% if user.is_active %}
+                        <span class="badge bg-success">نشط</span>
+                        {% else %}
+                        <span class="badge bg-secondary">غير نشط</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'dashboard:user_detail' user.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted py-5">لا يوجد مستهلكون</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
