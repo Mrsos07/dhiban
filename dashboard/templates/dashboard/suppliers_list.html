@@ -20,27 +20,69 @@
 
 <div class="card">
     <div class="card-header">
-        <form method="get" class="row g-2">
-            <div class="col-md-4">
-                <input type="text" name="q" class="form-control" placeholder="بحث..." value="{{ request.GET.q }}">
-            </div>
+        <form method="get" class="row g-2 align-items-end">
+            <!-- البحث -->
             <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">بحث</label>
+                <input type="text" name="q" class="form-control" placeholder="اسم المورد..." value="{{ current_q }}">
+            </div>
+            
+            <!-- فلتر التصنيف -->
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">التصنيف</label>
                 <select name="category" class="form-select">
                     <option value="">كل التصنيفات</option>
                     {% for cat in categories %}
-                    <option value="{{ cat.id }}" {% if request.GET.category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name_ar }}</option>
+                    <option value="{{ cat.id }}" {% if current_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name_ar }}</option>
                     {% endfor %}
                 </select>
             </div>
+            
+            <!-- فلتر الحالة -->
             <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">الحالة</label>
                 <select name="status" class="form-select">
                     <option value="">الكل</option>
-                    <option value="active" {% if request.GET.status == 'active' %}selected{% endif %}>نشط</option>
-                    <option value="partner" {% if request.GET.status == 'partner' %}selected{% endif %}>شريك</option>
+                    <option value="active" {% if current_status == 'active' %}selected{% endif %}>نشط</option>
+                    <option value="inactive" {% if current_status == 'inactive' %}selected{% endif %}>غير نشط</option>
+                    <option value="partner" {% if current_status == 'partner' %}selected{% endif %}>شريك</option>
                 </select>
             </div>
+            
+            <!-- فلتر التقييم -->
             <div class="col-md-2">
-                <button type="submit" class="btn btn-primary w-100">بحث</button>
+                <label class="form-label small text-muted mb-1">التقييم (من - إلى)</label>
+                <div class="input-group input-group-sm">
+                    <input type="number" name="min_rating" class="form-control" placeholder="0" min="0" max="5" step="0.5" value="{{ current_min_rating }}">
+                    <span class="input-group-text">-</span>
+                    <input type="number" name="max_rating" class="form-control" placeholder="5" min="0" max="5" step="0.5" value="{{ current_max_rating }}">
+                </div>
+            </div>
+            
+            <!-- الترتيب -->
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">ترتيب حسب</label>
+                <select name="sort" class="form-select">
+                    <option value="-rating" {% if current_sort == '-rating' %}selected{% endif %}>الأعلى تقييماً</option>
+                    <option value="rating" {% if current_sort == 'rating' %}selected{% endif %}>الأقل تقييماً</option>
+                    <option value="-reviews_count" {% if current_sort == '-reviews_count' %}selected{% endif %}>الأكثر تقييمات</option>
+                    <option value="name_ar" {% if current_sort == 'name_ar' %}selected{% endif %}>الاسم (أ-ي)</option>
+                    <option value="-name_ar" {% if current_sort == '-name_ar' %}selected{% endif %}>الاسم (ي-أ)</option>
+                    <option value="-created_at" {% if current_sort == '-created_at' %}selected{% endif %}>الأحدث</option>
+                    <option value="created_at" {% if current_sort == 'created_at' %}selected{% endif %}>الأقدم</option>
+                </select>
+            </div>
+            
+            <!-- أزرار -->
+            <div class="col-md-1">
+                <div class="d-flex gap-1">
+                    <button type="submit" class="btn btn-primary btn-sm" title="بحث">
+                        <i class="bi bi-search"></i>
+                    </button>
+                    <a href="{% url 'dashboard:suppliers_list' %}" class="btn btn-outline-secondary btn-sm" title="إعادة تعيين">
+                        <i class="bi bi-x-lg"></i>
+                    </a>
+                </div>
             </div>
         </form>
     </div>
@@ -66,7 +108,10 @@
                     </td>
                     <td>{{ supplier.category.name_ar }}</td>
                     <td dir="ltr">{{ supplier.get_primary_phone|default:"-" }}</td>
-                    <td><i class="bi bi-star-fill text-warning"></i> {{ supplier.rating }}</td>
+                    <td>
+                        <i class="bi bi-star-fill text-warning"></i> {{ supplier.rating }}
+                        {% if supplier.reviews_count %}<small class="text-muted">({{ supplier.reviews_count }})</small>{% endif %}
+                    </td>
                     <td>
                         {% if supplier.is_active %}
                         <span class="badge bg-success">نشط</span>

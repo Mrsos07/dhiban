@@ -1,0 +1,41 @@
+# Render Blueprint Configuration
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Web Service
+  - type: web
+    name: dhiban
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: DJANGO_SETTINGS_MODULE
+        value: dhiban_project.settings
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        value: ".onrender.com"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dhiban-db
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+    healthCheckPath: /
+    autoDeploy: true
+
+  # PostgreSQL Database
+databases:
+  - name: dhiban-db
+    databaseName: dhiban
+    user: dhiban_user
+    plan: free

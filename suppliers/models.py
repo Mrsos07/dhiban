@@ -151,6 +151,13 @@ class Supplier(models.Model):
         db_index=True
     )
     
+    google_maps_url = models.URLField(
+        _('رابط Google Maps'),
+        max_length=500,
+        blank=True,
+        help_text=_('رابط الموقع على خرائط جوجل')
+    )
+    
     # أرقام الهواتف (JSON Array)
     phone_numbers = models.JSONField(
         _('أرقام الهواتف'),

@@ -64,11 +64,14 @@ def dashboard_index(request):
 def suppliers_list(request):
     """قائمة الموردين"""
     suppliers = Supplier.objects.select_related('category', 'subcategory').all()
-    categories = Category.objects.filter(is_active=True)
+    categories = Category.objects.filter(is_active=True).order_by('order', 'name_ar')
     
     q = request.GET.get('q', '')
     category = request.GET.get('category', '')
     status = request.GET.get('status', '')
+    min_rating = request.GET.get('min_rating', '')
+    max_rating = request.GET.get('max_rating', '')
+    sort_by = request.GET.get('sort', '-rating')
     
     if q:
         suppliers = suppliers.filter(Q(name_ar__icontains=q) | Q(name_en__icontains=q))
@@ -78,10 +81,37 @@ def suppliers_list(request):
         suppliers = suppliers.filter(is_active=True)
     elif status == 'partner':
         suppliers = suppliers.filter(is_partner=True)
+    elif status == 'inactive':
+        suppliers = suppliers.filter(is_active=False)
+    
+    # فلتر التقييم
+    if min_rating:
+        try:
+            suppliers = suppliers.filter(rating__gte=float(min_rating))
+        except ValueError:
+            pass
+    if max_rating:
+        try:
+            suppliers = suppliers.filter(rating__lte=float(max_rating))
+        except ValueError:
+            pass
+    
+    # الترتيب
+    valid_sorts = ['rating', '-rating', 'name_ar', '-name_ar', 'created_at', '-created_at', 'reviews_count', '-reviews_count']
+    if sort_by in valid_sorts:
+        suppliers = suppliers.order_by(sort_by)
+    else:
+        suppliers = suppliers.order_by('-rating')
     
     return render(request, 'dashboard/suppliers_list.html', {
         'suppliers': suppliers,
         'categories': categories,
+        'current_category': category,
+        'current_status': status,
+        'current_min_rating': min_rating,
+        'current_max_rating': max_rating,
+        'current_sort': sort_by,
+        'current_q': q,
     })
 
 
@@ -363,12 +393,26 @@ def agent_settings(request):
         settings = AgentSettings.objects.create()
     
     if request.method == 'POST':
-        settings.name = request.POST.get('name', settings.name)
-        settings.model_name = request.POST.get('model_name', settings.model_name)
-        settings.system_prompt = request.POST.get('system_prompt', settings.system_prompt)
-        settings.temperature = float(request.POST.get('temperature', settings.temperature))
-        settings.max_tokens = int(request.POST.get('max_tokens', settings.max_tokens))
-        settings.welcome_message = request.POST.get('welcome_message', settings.welcome_message)
+        settings.name = request.POST.get('name') or settings.name
+        settings.model_name = request.POST.get('model_name') or settings.model_name
+        settings.system_prompt = request.POST.get('system_prompt') or settings.system_prompt
+        
+        # معالجة القيم الرقمية بأمان
+        temp_value = request.POST.get('temperature', '').strip()
+        if temp_value:
+            try:
+                settings.temperature = float(temp_value)
+            except ValueError:
+                pass
+        
+        max_tokens_value = request.POST.get('max_tokens', '').strip()
+        if max_tokens_value:
+            try:
+                settings.max_tokens = int(max_tokens_value)
+            except ValueError:
+                pass
+        
+        settings.welcome_message = request.POST.get('welcome_message') or settings.welcome_message
         settings.save()
         
         messages.success(request, 'تم حفظ إعدادات الوكيل بنجاح.')

@@ -16,9 +16,9 @@
                 <div id="chatContainer" class="chat-container p-3" style="height: 500px; overflow-y: auto; background: #f8f9fa;">
                     <!-- رسالة الترحيب -->
                     <div class="chat-message bot-message mb-3">
-                        <div class="message-avatar"></div>
+                        <div class="message-avatar">🐺</div>
                         <div class="message-content">
-                            <div class="message-bubble">{{ welcome_message|linebreaks }}</div>
+                            <div class="message-bubble">{{ welcome_message|linebreaksbr }}</div>
                             <small class="text-muted">ذيبان</small>
                         </div>
                     </div>
@@ -151,14 +151,19 @@ const sendBtn = document.getElementById('sendBtn');
 
 function addMessage(content, isUser = false) {
     const messageDiv = document.createElement('div');
-    messageDiv.className = chat-message  mb-3;
-    messageDiv.innerHTML = 
-        <div class="message-avatar"></div>
+    messageDiv.className = `chat-message ${isUser ? 'user-message' : 'bot-message'} mb-3`;
+    
+    const avatar = isUser ? '👤' : '🐺';
+    const sender = isUser ? 'أنت' : 'ذيبان';
+    const formattedContent = content.replace(/\n/g, '<br>');
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">${avatar}</div>
         <div class="message-content">
-            <div class="message-bubble"></div>
-            <small class="text-muted"></small>
+            <div class="message-bubble">${formattedContent}</div>
+            <small class="text-muted">${sender}</small>
         </div>
-    ;
+    `;
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
@@ -167,8 +172,8 @@ function showTyping() {
     const typingDiv = document.createElement('div');
     typingDiv.id = 'typingIndicator';
     typingDiv.className = 'chat-message bot-message mb-3';
-    typingDiv.innerHTML = 
-        <div class="message-avatar"></div>
+    typingDiv.innerHTML = `
+        <div class="message-avatar">🐺</div>
         <div class="message-content">
             <div class="message-bubble">
                 <div class="typing-indicator">
@@ -176,7 +181,7 @@ function showTyping() {
                 </div>
             </div>
         </div>
-    ;
+    `;
     chatContainer.appendChild(typingDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
 }
@@ -211,7 +216,8 @@ async function sendMessage(e) {
         addMessage(data.response || 'حدث خطأ في الاستجابة');
     } catch (error) {
         hideTyping();
-        addMessage('عذرا حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.');
+        addMessage('عذراً، حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.');
+        console.error('Chat error:', error);
     }
     
     sendBtn.disabled = false;
@@ -224,15 +230,15 @@ function setExample(text) {
 }
 
 function clearChat() {
-    chatContainer.innerHTML = 
+    chatContainer.innerHTML = `
         <div class="chat-message bot-message mb-3">
-            <div class="message-avatar"></div>
+            <div class="message-avatar">🐺</div>
             <div class="message-content">
-                <div class="message-bubble">{{ welcome_message|linebreaks }}</div>
+                <div class="message-bubble">{{ welcome_message|linebreaksbr }}</div>
                 <small class="text-muted">ذيبان</small>
             </div>
         </div>
-    ;
+    `;
 }
 </script>
 {% endblock %}
