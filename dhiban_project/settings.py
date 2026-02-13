@@ -121,27 +121,27 @@ SESSION_SAVE_EVERY_REQUEST = True
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # السماح بالجلسات المستمرة
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # None للإنتاج
 SESSION_IDLE_TIMEOUT = 3600
 
 # CSRF Settings - مهم للسماح بالدخول من أجهزة مختلفة
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_HTTPONLY = False  # السماح لـ JavaScript بالوصول للـ token
-CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'  # None للإنتاج
 CSRF_USE_SESSIONS = False  # استخدام cookies بدلاً من sessions
+CSRF_COOKIE_NAME = 'csrftoken'
+CSRF_HEADER_NAME = 'HTTP_X_CSRFTOKEN'
 
-# CSRF Trusted Origins for production
+# CSRF Trusted Origins for production - مهم جداً للجوالات
 CSRF_TRUSTED_ORIGINS = [
     'https://dhiban.onrender.com',
     'https://*.onrender.com',
-    'http://dhiban.onrender.com',
 ]
 
 # Add custom domain if exists
 CUSTOM_DOMAIN = os.environ.get('CUSTOM_DOMAIN', '')
 if CUSTOM_DOMAIN:
     CSRF_TRUSTED_ORIGINS.append(f'https://{CUSTOM_DOMAIN}')
-    CSRF_TRUSTED_ORIGINS.append(f'http://{CUSTOM_DOMAIN}')
 
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
