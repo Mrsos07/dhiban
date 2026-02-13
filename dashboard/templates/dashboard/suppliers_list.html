@@ -3,17 +3,17 @@
 {% block page_title %}إدارة الموردين{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
     <div>
         <h4 class="mb-0">الموردون</h4>
         <small class="text-muted">إجمالي {{ suppliers.count }} مورد</small>
     </div>
-    <div class="d-flex gap-2">
-        <a href="{% url 'dashboard:export_suppliers' %}" class="btn btn-outline-success">
-            <i class="bi bi-download me-1"></i>تصدير
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'dashboard:export_suppliers' %}" class="btn btn-outline-success btn-sm">
+            <i class="bi bi-download me-1"></i><span class="d-none d-sm-inline">تصدير</span>
         </a>
-        <a href="{% url 'dashboard:supplier_add' %}" class="btn btn-primary">
-            <i class="bi bi-plus-lg me-1"></i>إضافة مورد
+        <a href="{% url 'dashboard:supplier_add' %}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i><span class="d-none d-sm-inline">إضافة مورد</span>
         </a>
     </div>
 </div>
@@ -22,15 +22,15 @@
     <div class="card-header">
         <form method="get" class="row g-2 align-items-end">
             <!-- البحث -->
-            <div class="col-md-3">
-                <label class="form-label small text-muted mb-1">بحث</label>
-                <input type="text" name="q" class="form-control" placeholder="اسم المورد..." value="{{ current_q }}">
+            <div class="col-6 col-md-3">
+                <label class="form-label small text-muted mb-1 d-none d-md-block">بحث</label>
+                <input type="text" name="q" class="form-control form-control-sm" placeholder="اسم المورد..." value="{{ current_q }}">
             </div>
             
             <!-- فلتر التصنيف -->
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">التصنيف</label>
-                <select name="category" class="form-select">
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-muted mb-1 d-none d-md-block">التصنيف</label>
+                <select name="category" class="form-select form-select-sm">
                     <option value="">كل التصنيفات</option>
                     {% for cat in categories %}
                     <option value="{{ cat.id }}" {% if current_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name_ar }}</option>
@@ -39,9 +39,9 @@
             </div>
             
             <!-- فلتر الحالة -->
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">الحالة</label>
-                <select name="status" class="form-select">
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-muted mb-1 d-none d-md-block">الحالة</label>
+                <select name="status" class="form-select form-select-sm">
                     <option value="">الكل</option>
                     <option value="active" {% if current_status == 'active' %}selected{% endif %}>نشط</option>
                     <option value="inactive" {% if current_status == 'inactive' %}selected{% endif %}>غير نشط</option>
@@ -50,8 +50,8 @@
             </div>
             
             <!-- فلتر التقييم -->
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">التقييم (من - إلى)</label>
+            <div class="col-6 col-md-2">
+                <label class="form-label small text-muted mb-1 d-none d-md-block">التقييم</label>
                 <div class="input-group input-group-sm">
                     <input type="number" name="min_rating" class="form-control" placeholder="0" min="0" max="5" step="0.5" value="{{ current_min_rating }}">
                     <span class="input-group-text">-</span>
@@ -60,21 +60,19 @@
             </div>
             
             <!-- الترتيب -->
-            <div class="col-md-2">
-                <label class="form-label small text-muted mb-1">ترتيب حسب</label>
-                <select name="sort" class="form-select">
+            <div class="col-8 col-md-2">
+                <label class="form-label small text-muted mb-1 d-none d-md-block">ترتيب</label>
+                <select name="sort" class="form-select form-select-sm">
                     <option value="-rating" {% if current_sort == '-rating' %}selected{% endif %}>الأعلى تقييماً</option>
                     <option value="rating" {% if current_sort == 'rating' %}selected{% endif %}>الأقل تقييماً</option>
                     <option value="-reviews_count" {% if current_sort == '-reviews_count' %}selected{% endif %}>الأكثر تقييمات</option>
                     <option value="name_ar" {% if current_sort == 'name_ar' %}selected{% endif %}>الاسم (أ-ي)</option>
-                    <option value="-name_ar" {% if current_sort == '-name_ar' %}selected{% endif %}>الاسم (ي-أ)</option>
                     <option value="-created_at" {% if current_sort == '-created_at' %}selected{% endif %}>الأحدث</option>
-                    <option value="created_at" {% if current_sort == 'created_at' %}selected{% endif %}>الأقدم</option>
                 </select>
             </div>
             
             <!-- أزرار -->
-            <div class="col-md-1">
+            <div class="col-4 col-md-1">
                 <div class="d-flex gap-1">
                     <button type="submit" class="btn btn-primary btn-sm" title="بحث">
                         <i class="bi bi-search"></i>
@@ -87,6 +85,7 @@
         </form>
     </div>
     <div class="card-body p-0">
+        <div class="table-responsive">
         <table class="table table-hover mb-0">
             <thead>
                 <tr>
@@ -154,6 +153,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
 </div>
 {% endblock %}
