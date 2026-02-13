@@ -156,9 +156,10 @@ def handle_text_message(user: WhatsAppUser, conversation: Conversation, text: st
         return None  # لا نرسل رسالة نصية إضافية
     
     # استخدام وكيل الذكاء الاصطناعي
+    # نستخدم رقم الواتساب كـ user_id لضمان عزل المحادثات
     try:
         from ai_agent.agent import process_user_message
-        response = process_user_message(text, str(user.id))
+        response = process_user_message(text, user.phone_number)
         
         # تحديث نوع المحادثة
         conversation.intent_detected = 'search'
@@ -197,9 +198,10 @@ def handle_button_reply(user: WhatsAppUser, conversation: Conversation, button_i
 def handle_list_reply(user: WhatsAppUser, conversation: Conversation, list_id: str) -> str:
     """معالجة الرد على القائمة"""
     # البحث في التصنيف المختار
+    # نستخدم رقم الواتساب كـ user_id لضمان عزل المحادثات
     try:
         from ai_agent.agent import process_user_message
-        response = process_user_message(f"أبي {list_id}", str(user.id))
+        response = process_user_message(f"أبي {list_id}", user.phone_number)
         return response
     except Exception as e:
         logger.error(f"List reply error: {e}")
