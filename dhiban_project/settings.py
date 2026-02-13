@@ -143,6 +143,10 @@ CUSTOM_DOMAIN = os.environ.get('CUSTOM_DOMAIN', '')
 if CUSTOM_DOMAIN:
     CSRF_TRUSTED_ORIGINS.append(f'https://{CUSTOM_DOMAIN}')
 
+# Proxy SSL Header - مهم جداً لـ Render
+# يخبر Django أن الطلب آمن عندما يأتي من proxy
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
