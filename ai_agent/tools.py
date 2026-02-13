@@ -48,6 +48,15 @@ def search_suppliers(
     
     results = []
     for supplier in queryset:
+        # بناء رابط الموقع
+        maps_url = ''
+        if hasattr(supplier, 'google_maps_url') and supplier.google_maps_url:
+            maps_url = supplier.google_maps_url
+        elif supplier.location and supplier.location.get('lat') and supplier.location.get('lng'):
+            lat = supplier.location.get('lat')
+            lng = supplier.location.get('lng')
+            maps_url = f"https://maps.google.com/?q={lat},{lng}"
+        
         results.append({
             'id': str(supplier.id),
             'name': supplier.name_ar,
@@ -55,6 +64,7 @@ def search_suppliers(
             'rating': float(supplier.rating),
             'phone': supplier.get_primary_phone() or '',
             'location': supplier.location,
+            'maps_url': maps_url,
             'is_partner': supplier.is_partner,
             'description': supplier.description[:100] if supplier.description else '',
             'source': 'database'
@@ -294,31 +304,33 @@ def search_google_places(
 def format_google_results(places: List[Dict], query: str = "") -> str:
     """تنسيق نتائج البحث من Google Maps"""
     if not places:
-        return f"عذراً، لم أجد نتائج لـ '{query}' في عنيزة."
+        return f"ما لقيت '{query}' في عنيزة 😕"
     
-    response = f"🔍 وجدت لك {len(places)} نتيجة لـ '{query}':\n\n"
-    response += "🏆 مرتبة حسب التقييم:\n"
-    response += "=" * 40 + "\n\n"
+    response = f"🔍 هذي أحسن الخيارات لـ '{query}':\n\n"
     
-    for i, place in enumerate(places, 1):
+    for i, place in enumerate(places[:2], 1):  # أفضل خيارين فقط
         name = place.get('name', 'غير معروف')
         rating = place.get('rating', 0)
         total_ratings = place.get('total_ratings', 0)
         address = place.get('address', 'غير متوفر')
         is_open = place.get('is_open')
         maps_url = place.get('maps_url', '')
+        phone = place.get('phone', '')
         
         open_status = "✅ مفتوح" if is_open else ("❌ مغلق" if is_open is False else "")
         
-        response += f"{i}. 🍽️ *{name}*\n"
-        response += f"   ⭐ التقييم: {rating}/5 ({total_ratings} تقييم)\n"
+        response += f"{i}. *{name}*\n"
+        response += f"   ⭐ {rating}/5 ({total_ratings} تقييم)\n"
         response += f"   📍 {address}\n"
+        if phone:
+            response += f"   📞 {phone}\n"
         if open_status:
             response += f"   🕐 {open_status}\n"
         if maps_url:
-            response += f"   🗺️ الخريطة: {maps_url}\n"
+            response += f"   🗺️ الموقع: {maps_url}\n"
         response += "\n"
     
+    response += "تبي شي ثاني؟ 🐺"
     return response.strip()
 
 
@@ -369,26 +381,32 @@ def get_categories() -> List[Dict]:
 
 def format_supplier_response(supplier: Dict) -> str:
     """تنسيق رد المورد للمستخدم"""
-    response = f"""
- *{supplier.get('name', '')}*
- التصنيف: {supplier.get('category', '')}
- التقييم: {supplier.get('rating', 0)}/5
-"""
+    response = f"*{supplier.get('name', '')}*\n"
+    response += f"   ⭐ {supplier.get('rating', 0)}/5\n"
     
     if supplier.get('phone'):
-        response += f" الهاتف: {supplier['phone']}\n"
+        response += f"   📞 {supplier['phone']}\n"
     
     if supplier.get('address'):
-        response += f" العنوان: {supplier['address']}\n"
+        response += f"   📍 {supplier['address']}\n"
     elif supplier.get('location', {}).get('address'):
-        response += f" العنوان: {supplier['location']['address']}\n"
+        response += f"   📍 {supplier['location']['address']}\n"
+    
+    # رابط الموقع على الخريطة
+    maps_url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
+    if maps_url:
+        response += f"   🗺️ الموقع: {maps_url}\n"
+    elif supplier.get('location', {}).get('lat') and supplier.get('location', {}).get('lng'):
+        lat = supplier['location']['lat']
+        lng = supplier['location']['lng']
+        response += f"   🗺️ الموقع: https://maps.google.com/?q={lat},{lng}\n"
     
     if supplier.get('is_partner'):
-        response += " شريك معتمد\n"
+        response += "   ✅ شريك معتمد\n"
     
     if supplier.get('is_open') is not None:
-        status = "مفتوح الآن " if supplier['is_open'] else "مغلق "
-        response += f" {status}\n"
+        status = "✅ مفتوح" if supplier['is_open'] else "❌ مغلق"
+        response += f"   🕐 {status}\n"
     
     return response.strip()
 
@@ -399,23 +417,23 @@ def format_search_results(results: Dict, query: str = "") -> str:
     google_results = results.get('google_results', [])
     
     if not db_results and not google_results:
-        return f"عذرا لم أجد نتائج لـ '{query}'. جرب وصفا مختلفا أو تصنيفا آخر."
+        return f"ما لقيت '{query}' في عنيزة 😕\nجرب شي ثاني!"
     
-    response = f" وجدت لك {results['total']} نتيجة:\n\n"
+    response = f"🔍 هذي أحسن الخيارات لـ '{query}':\n\n"
     
-    # نتائج قاعدة البيانات (الموردين المسجلين)
+    # نتائج قاعدة البيانات (الموردين المسجلين) - أفضل 2 فقط
+    count = 0
     if db_results:
-        response += " *من شركائنا:*\n\n"
-        for i, supplier in enumerate(db_results, 1):
+        for i, supplier in enumerate(db_results[:2], 1):
             response += f"{i}. {format_supplier_response(supplier)}\n\n"
+            count = i
     
-    # نتائج Google Maps
-    if google_results:
-        response += " *من Google Maps:*\n\n"
-        start_num = len(db_results) + 1
-        for i, place in enumerate(google_results, start_num):
+    # نتائج Google Maps - إذا لم نجد في الموردين
+    if google_results and count < 2:
+        for i, place in enumerate(google_results[:2-count], count + 1):
             response += f"{i}. {format_supplier_response(place)}\n\n"
     
+    response += "تبي شي ثاني؟ 🐺"
     return response.strip()
 
 

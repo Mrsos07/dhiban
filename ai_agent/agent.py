@@ -196,6 +196,8 @@ class DhibanAgent:
                     response += f"   ⭐ {r['rating']}/5\n"
                     if r.get('phone'):
                         response += f"   📞 {r['phone']}\n"
+                    if r.get('maps_url'):
+                        response += f"   🗺️ الموقع: {r['maps_url']}\n"
                     response += "\n"
                 response += "تبي شي ثاني؟ 🐺"
                 return response
@@ -208,8 +210,12 @@ class DhibanAgent:
                     response += f"{i}. *{r['name']}*\n"
                     response += f"   ⭐ {r['rating']}/5 ({r.get('total_ratings', 0)} تقييم)\n"
                     response += f"   📍 {r['address']}\n"
+                    if r.get('phone'):
+                        response += f"   📞 {r['phone']}\n"
                     if r.get('is_open'):
                         response += f"   🕐 مفتوح ✅\n"
+                    if r.get('maps_url'):
+                        response += f"   🗺️ الموقع: {r['maps_url']}\n"
                     response += "\n"
                 response += "تبي شي ثاني؟ 🐺"
                 return response
@@ -263,6 +269,8 @@ class DhibanAgent:
                     response += f"   ⭐ {r['rating']}/5\n"
                     if r.get('phone'):
                         response += f"   📞 {r['phone']}\n"
+                    if r.get('maps_url'):
+                        response += f"   🗺️ الموقع: {r['maps_url']}\n"
                     response += "\n"
                 response += "تبي شي ثاني؟ 🐺"
                 return response
@@ -278,8 +286,12 @@ class DhibanAgent:
                 response += f"{i}. *{r['name']}*\n"
                 response += f"   ⭐ {r['rating']}/5 ({r.get('total_ratings', 0)} تقييم)\n"
                 response += f"   📍 {r['address']}\n"
+                if r.get('phone'):
+                    response += f"   📞 {r['phone']}\n"
                 if r.get('is_open'):
                     response += f"   🕐 مفتوح ✅\n"
+                if r.get('maps_url'):
+                    response += f"   🗺️ الموقع: {r['maps_url']}\n"
                 response += "\n"
             response += "تبي شي ثاني؟ 🐺"
             return response
