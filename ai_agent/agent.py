@@ -28,9 +28,85 @@ class DhibanAgent:
     مع تكامل قاعدة البيانات و Google Maps ونظام النوايا
     """
     
+    # عدد الرسائل المحفوظة في الذاكرة
+    MEMORY_SIZE = 5
+    
     def __init__(self):
         self.client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
         self.model = OPENAI_MODEL
+    
+    def _get_conversation_history(self, user_id: str) -> List[Dict]:
+        """جلب آخر 5 رسائل من المحادثة"""
+        if not user_id:
+            return []
+        
+        try:
+            from conversations.models import Conversation
+            from users.models import WhatsAppUser
+            
+            # البحث عن المستخدم
+            user = WhatsAppUser.objects.filter(phone_number=user_id).first()
+            if not user:
+                return []
+            
+            # جلب آخر محادثة نشطة
+            conversation = Conversation.objects.filter(
+                user=user,
+                ended_at__isnull=True
+            ).order_by('-started_at').first()
+            
+            if not conversation or not conversation.messages:
+                return []
+            
+            # جلب آخر 5 رسائل وتحويلها لصيغة OpenAI
+            recent_messages = conversation.messages[-self.MEMORY_SIZE:]
+            history = []
+            for msg in recent_messages:
+                role = "user" if msg.get('role') == 'user' else "assistant"
+                history.append({
+                    "role": role,
+                    "content": msg.get('content', '')
+                })
+            
+            return history
+        
+        except Exception as e:
+            logger.error(f"Error getting conversation history: {e}")
+            return []
+    
+    def _save_message(self, user_id: str, role: str, content: str):
+        """حفظ الرسالة في المحادثة"""
+        if not user_id:
+            return
+        
+        try:
+            from conversations.models import Conversation
+            from users.models import WhatsAppUser
+            from django.utils import timezone
+            
+            # البحث عن المستخدم أو إنشاؤه
+            user, _ = WhatsAppUser.objects.get_or_create(
+                phone_number=user_id,
+                defaults={'name': f'User {user_id[-4:]}'}
+            )
+            
+            # البحث عن محادثة نشطة أو إنشاء واحدة جديدة
+            # المحادثة تعتبر نشطة إذا كانت خلال آخر 30 دقيقة
+            thirty_mins_ago = timezone.now() - timezone.timedelta(minutes=30)
+            conversation = Conversation.objects.filter(
+                user=user,
+                ended_at__isnull=True,
+                started_at__gte=thirty_mins_ago
+            ).order_by('-started_at').first()
+            
+            if not conversation:
+                conversation = Conversation.objects.create(user=user)
+            
+            # إضافة الرسالة
+            conversation.add_message(role, content)
+            
+        except Exception as e:
+            logger.error(f"Error saving message: {e}")
     
     def _execute_tool(self, tool_name: str, arguments: Dict) -> str:
         """تنفيذ الأداة المطلوبة"""
@@ -215,13 +291,18 @@ class DhibanAgent:
         معالجة رسالة المستخدم باستخدام OpenAI
         مع fallback لنظام النوايا المحلي
         """
+        # حفظ رسالة المستخدم
+        self._save_message(user_id, 'user', user_message)
+        
         # تحليل النية
         intent = detect_intent(user_message)
         category = intent.entities.get('category')
         
         # إذا لم يكن OpenAI متاحاً، نستخدم نظام النوايا المحلي
         if not self.client:
-            return self._process_with_intent(user_message) or "ما فهمت عليك 🤔 وضح أكثر!"
+            response = self._process_with_intent(user_message) or "ما فهمت عليك 🤔 وضح أكثر!"
+            self._save_message(user_id, 'bot', response)
+            return response
         
         try:
             # إضافة سياق البحث للرسالة
@@ -235,10 +316,19 @@ class DhibanAgent:
                 )
                 context = f"\n\n[نتائج البحث التلقائي]:\n{search_result}"
             
+            # بناء الرسائل مع الذاكرة (آخر 5 رسائل)
             messages = [
-                {"role": "system", "content": DHIBAN_SYSTEM_PROMPT},
-                {"role": "user", "content": user_message + context}
+                {"role": "system", "content": DHIBAN_SYSTEM_PROMPT}
             ]
+            
+            # إضافة تاريخ المحادثة
+            conversation_history = self._get_conversation_history(user_id)
+            if conversation_history:
+                # إضافة الرسائل السابقة (بدون الرسالة الحالية لأنها ستُضاف)
+                messages.extend(conversation_history[:-1] if len(conversation_history) > 1 else [])
+            
+            # إضافة الرسالة الحالية مع السياق
+            messages.append({"role": "user", "content": user_message + context})
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -284,17 +374,26 @@ class DhibanAgent:
                     max_tokens=400
                 )
                 
-                return final_response.choices[0].message.content
+                bot_response = final_response.choices[0].message.content
+                # حفظ رد الوكيل
+                self._save_message(user_id, 'bot', bot_response)
+                return bot_response
             
-            return assistant_message.content or "ما فهمت عليك 🤔 وضح أكثر!"
+            bot_response = assistant_message.content or "ما فهمت عليك 🤔 وضح أكثر!"
+            # حفظ رد الوكيل
+            self._save_message(user_id, 'bot', bot_response)
+            return bot_response
         
         except Exception as e:
             logger.error(f"Agent error: {e}")
             # Fallback لنظام النوايا المحلي
             local_response = self._process_with_intent(user_message)
             if local_response:
+                self._save_message(user_id, 'bot', local_response)
                 return local_response
-            return "ما فهمت عليك 🤔 وضح أكثر!"
+            fallback_response = "ما فهمت عليك 🤔 وضح أكثر!"
+            self._save_message(user_id, 'bot', fallback_response)
+            return fallback_response
     
     def get_greeting(self) -> str:
         """رسالة الترحيب باللهجة القصيمية"""
