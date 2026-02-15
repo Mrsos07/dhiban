@@ -8,7 +8,7 @@ from typing import Optional, Dict, List
 from openai import OpenAI
 
 from .config import OPENAI_API_KEY, OPENAI_MODEL
-from .prompts import DHIBAN_SYSTEM_PROMPT
+from .prompts import DHIBAN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from .tools import (
     search_suppliers, search_google_places, combined_search,
     get_categories, format_search_results, format_google_results, TOOLS
@@ -29,6 +29,30 @@ class DhibanAgent:
     def __init__(self):
         self.client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
         self.model = OPENAI_MODEL
+        # تحميل الإعدادات من قاعدة البيانات
+        self._settings_cache = None
+        self._settings_cache_time = None
+    
+    def _get_settings(self):
+        """جلب إعدادات الوكيل من قاعدة البيانات مع كاش لمدة 60 ثانية"""
+        import time
+        now = time.time()
+        
+        # استخدام الكاش إذا كان محدّث خلال آخر 60 ثانية
+        if self._settings_cache and self._settings_cache_time and (now - self._settings_cache_time) < 60:
+            return self._settings_cache
+        
+        try:
+            from .models import AgentSettings
+            settings = AgentSettings.get_active()
+            if settings:
+                self._settings_cache = settings
+                self._settings_cache_time = now
+                return settings
+        except Exception as e:
+            logger.warning(f"Could not load agent settings from DB: {e}")
+        
+        return None
     
     def _get_conversation_history(self, user_id: str) -> List[Dict]:
         """جلب آخر 5 رسائل من المحادثة"""
@@ -152,7 +176,7 @@ class DhibanAgent:
     def process_message(self, user_message: str, user_id: str = None) -> str:
         """
         معالجة رسالة المستخدم باستخدام OpenAI فقط
-        بدون أي ردود جاهزة أو موك - الوكيل يرد من نفسه
+        يقرأ الإعدادات (system prompt, model, temperature) من قاعدة البيانات
         """
         # حفظ رسالة المستخدم
         self._save_message(user_id, 'user', user_message)
@@ -163,9 +187,18 @@ class DhibanAgent:
             return "عذراً، الخدمة غير متاحة حالياً. حاول مرة ثانية."
         
         try:
+            # جلب الإعدادات من قاعدة البيانات
+            db_settings = self._get_settings()
+            
+            # استخدام إعدادات قاعدة البيانات أو القيم الافتراضية
+            system_prompt = db_settings.system_prompt if db_settings else DEFAULT_SYSTEM_PROMPT
+            model = db_settings.model_name if db_settings else self.model
+            temperature = db_settings.temperature if db_settings else 0.9
+            max_tokens = db_settings.max_tokens if db_settings else 600
+            
             # بناء الرسائل مع الذاكرة (آخر 5 رسائل)
             messages = [
-                {"role": "system", "content": DHIBAN_SYSTEM_PROMPT}
+                {"role": "system", "content": system_prompt}
             ]
             
             # إضافة تاريخ المحادثة
@@ -178,12 +211,12 @@ class DhibanAgent:
             
             # إرسال لـ OpenAI مع الأدوات
             response = self.client.chat.completions.create(
-                model=self.model,
+                model=model,
                 messages=messages,
                 tools=TOOLS,
                 tool_choice="auto",
-                temperature=0.7,
-                max_tokens=500
+                temperature=temperature,
+                max_tokens=max_tokens
             )
             
             assistant_message = response.choices[0].message
@@ -216,10 +249,10 @@ class DhibanAgent:
                 messages.extend(tool_results)
                 
                 final_response = self.client.chat.completions.create(
-                    model=self.model,
+                    model=model,
                     messages=messages,
-                    temperature=0.7,
-                    max_tokens=500
+                    temperature=temperature,
+                    max_tokens=max_tokens
                 )
                 
                 bot_response = final_response.choices[0].message.content
@@ -241,7 +274,11 @@ class DhibanAgent:
             return error_response
     
     def get_greeting(self) -> str:
-        """رسالة الترحيب باللهجة القصيمية"""
+        """رسالة الترحيب - تُقرأ من إعدادات قاعدة البيانات"""
+        db_settings = self._get_settings()
+        if db_settings and db_settings.welcome_message:
+            return db_settings.welcome_message
+        
         return """هلا والله! 🐺
 أنا ذيبان، دليلك في عنيزة.
 
