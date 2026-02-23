@@ -275,6 +275,78 @@ class DhibanAgent:
             self._save_message(user_id, 'bot', error_response)
             return error_response
     
+    def process_message_with_history(self, user_message: str, chat_history: List[Dict]) -> str:
+        """
+        معالجة رسالة مع تاريخ محادثة مُمرَّر مباشرة (للويب)
+        """
+        if not self.client:
+            logger.error("OpenAI client not configured")
+            return "عذراً، الخدمة غير متاحة حالياً. حاول مرة ثانية."
+        
+        try:
+            db_settings = self._get_settings()
+            system_prompt = db_settings.system_prompt if db_settings else DEFAULT_SYSTEM_PROMPT
+            model = db_settings.model_name if db_settings else self.model
+            temperature = db_settings.temperature if db_settings else 0.9
+            max_tokens = db_settings.max_tokens if db_settings else 600
+            
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            if chat_history:
+                messages.extend(chat_history)
+            
+            messages.append({"role": "user", "content": user_message})
+            
+            response = self.client.chat.completions.create(
+                model=model,
+                messages=messages,
+                tools=TOOLS,
+                tool_choice="auto",
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            
+            assistant_message = response.choices[0].message
+            
+            if assistant_message.tool_calls:
+                tool_results = []
+                for tool_call in assistant_message.tool_calls:
+                    tool_name = tool_call.function.name
+                    arguments = json.loads(tool_call.function.arguments)
+                    result = self._execute_tool(tool_name, arguments)
+                    
+                    if tool_name == "search_suppliers" and "لم أجد" in result:
+                        query = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
+                        google_result = search_google_places(query=query, limit=3)
+                        if google_result:
+                            result = format_google_results(google_result, query)
+                    
+                    tool_results.append({
+                        "tool_call_id": tool_call.id,
+                        "role": "tool",
+                        "content": result
+                    })
+                
+                messages.append(assistant_message)
+                messages.extend(tool_results)
+                
+                final_response = self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                return final_response.choices[0].message.content
+            
+            bot_response = assistant_message.content
+            if not bot_response:
+                bot_response = "وش تبي بالضبط؟ وضح أكثر 🐺"
+            return bot_response
+        
+        except Exception as e:
+            logger.error(f"Agent error: {e}", exc_info=True)
+            return "صار خطأ، جرب مرة ثانية 🐺"
+
     def get_greeting(self) -> str:
         """رسالة الترحيب - تُقرأ من إعدادات قاعدة البيانات"""
         db_settings = self._get_settings()

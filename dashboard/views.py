@@ -376,8 +376,19 @@ def agent_chat(request):
         if not message:
             return JsonResponse({'error': 'الرسالة مطلوبة'}, status=400)
         
-        from ai_agent.agent import process_user_message
-        response = process_user_message(message)
+        from ai_agent.agent import dhiban_agent
+        
+        # جلب تاريخ المحادثة من الجلسة
+        chat_history = request.session.get('agent_chat_history', [])
+        
+        # بناء الرسائل مع الذاكرة
+        response = dhiban_agent.process_message_with_history(message, chat_history)
+        
+        # تحديث التاريخ في الجلسة (آخر 10 رسائل)
+        chat_history.append({"role": "user", "content": message})
+        chat_history.append({"role": "assistant", "content": response})
+        request.session['agent_chat_history'] = chat_history[-10:]
+        request.session.modified = True
         
         return JsonResponse({'response': response})
     
