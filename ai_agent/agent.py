@@ -178,9 +178,6 @@ class DhibanAgent:
         معالجة رسالة المستخدم باستخدام OpenAI فقط
         يقرأ الإعدادات (system prompt, model, temperature) من قاعدة البيانات
         """
-        # حفظ رسالة المستخدم
-        self._save_message(user_id, 'user', user_message)
-        
         # التحقق من وجود OpenAI
         if not self.client:
             logger.error("OpenAI client not configured")
@@ -196,17 +193,22 @@ class DhibanAgent:
             temperature = db_settings.temperature if db_settings else 0.9
             max_tokens = db_settings.max_tokens if db_settings else 600
             
+            # جلب تاريخ المحادثة قبل حفظ الرسالة الحالية لتجنب التكرار
+            conversation_history = self._get_conversation_history(user_id)
+            
+            # حفظ رسالة المستخدم بعد جلب التاريخ
+            self._save_message(user_id, 'user', user_message)
+            
             # بناء الرسائل مع الذاكرة (آخر 5 رسائل)
             messages = [
                 {"role": "system", "content": system_prompt}
             ]
             
-            # إضافة تاريخ المحادثة
-            conversation_history = self._get_conversation_history(user_id)
+            # إضافة تاريخ المحادثة كاملاً
             if conversation_history:
-                messages.extend(conversation_history[:-1] if len(conversation_history) > 1 else [])
+                messages.extend(conversation_history)
             
-            # إضافة رسالة المستخدم
+            # إضافة رسالة المستخدم الحالية
             messages.append({"role": "user", "content": user_message})
             
             # إرسال لـ OpenAI مع الأدوات
