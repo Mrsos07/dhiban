@@ -371,24 +371,24 @@ def agent_chat(request):
     """API لمحادثة الوكيل"""
     try:
         data = json.loads(request.body)
-        message = data.get('message', '')
         
+        # مسح الذاكرة إذا طُلب ذلك
+        if data.get('clear_history'):
+            request.session['agent_chat_history'] = []
+            request.session.modified = True
+            return JsonResponse({'status': 'cleared'})
+        
+        message = data.get('message', '')
         if not message:
             return JsonResponse({'error': 'الرسالة مطلوبة'}, status=400)
         
         from ai_agent.agent import dhiban_agent
         
-        # جلب تاريخ المحادثة من الجلسة
-        chat_history = request.session.get('agent_chat_history', [])
+        # استخدام التاريخ المُمرَّر من الـ JavaScript مباشرة
+        chat_history = data.get('history', [])
         
-        # بناء الرسائل مع الذاكرة
+        # معالجة الرسالة مع التاريخ
         response = dhiban_agent.process_message_with_history(message, chat_history)
-        
-        # تحديث التاريخ في الجلسة (آخر 10 رسائل)
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": response})
-        request.session['agent_chat_history'] = chat_history[-10:]
-        request.session.modified = True
         
         return JsonResponse({'response': response})
     

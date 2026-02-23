@@ -149,6 +149,9 @@ const chatContainer = document.getElementById('chatContainer');
 const userInput = document.getElementById('userInput');
 const sendBtn = document.getElementById('sendBtn');
 
+// ذاكرة المحادثة
+let chatHistory = [];
+
 function addMessage(content, isUser = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${isUser ? 'user-message' : 'bot-message'} mb-3`;
@@ -208,12 +211,18 @@ async function sendMessage(e) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': '{{ csrf_token }}'
             },
-            body: JSON.stringify({ message: message })
+            body: JSON.stringify({ message: message, history: chatHistory })
         });
         
         const data = await response.json();
         hideTyping();
-        addMessage(data.response || 'حدث خطأ في الاستجابة');
+        const botResponse = data.response || 'حدث خطأ في الاستجابة';
+        addMessage(botResponse);
+        // حفظ الرسالة والرد في الذاكرة
+        chatHistory.push({role: 'user', content: message});
+        chatHistory.push({role: 'assistant', content: botResponse});
+        // الاحتفاظ بآخر 10 رسائل فقط
+        if (chatHistory.length > 10) chatHistory = chatHistory.slice(-10);
     } catch (error) {
         hideTyping();
         addMessage('عذراً، حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى.');
@@ -230,6 +239,7 @@ function setExample(text) {
 }
 
 function clearChat() {
+    chatHistory = [];
     chatContainer.innerHTML = `
         <div class="chat-message bot-message mb-3">
             <div class="message-avatar">🐺</div>
@@ -239,6 +249,12 @@ function clearChat() {
             </div>
         </div>
     `;
+    // مسح الذاكرة من الـ session أيضاً
+    fetch('{% url "dashboard:agent_chat" %}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({ clear_history: true })
+    });
 }
 </script>
 {% endblock %}
