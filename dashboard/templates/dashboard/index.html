@@ -3,6 +3,37 @@
 {% block page_title %}الرئيسية{% endblock %}
 
 {% block content %}
+
+<!-- WhatsApp Connection Banner -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 {% if whatsapp_connected %}bg-success{% else %}bg-warning{% endif %} bg-opacity-10">
+            <div class="card-body py-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="bi bi-whatsapp fs-3 {% if whatsapp_connected %}text-success{% else %}text-warning{% endif %}"></i>
+                    <div>
+                        <strong>واتساب</strong>
+                        {% if whatsapp_connected %}
+                            <span class="badge bg-success ms-2">متصل ✓</span>
+                            <p class="mb-0 small text-muted">الوكيل الذكي يستقبل رسائل واتساب الآن</p>
+                        {% elif evolution_configured %}
+                            <span class="badge bg-warning text-dark ms-2">غير متصل</span>
+                            <p class="mb-0 small text-muted">امسح QR Code لربط الواتساب بالوكيل</p>
+                        {% else %}
+                            <span class="badge bg-secondary ms-2">غير مهيأ</span>
+                            <p class="mb-0 small text-muted">يلزم إعداد Evolution API لربط الواتساب</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <a href="{% url 'dashboard:whatsapp_connect' %}" class="btn {% if whatsapp_connected %}btn-outline-success{% else %}btn-success{% endif %} btn-sm px-4">
+                    <i class="bi bi-whatsapp me-1"></i>
+                    {% if whatsapp_connected %}إدارة الاتصال{% else %}ربط الواتساب{% endif %}
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Stats Cards -->
 <div class="row g-4 mb-4">
     <div class="col-md-3">

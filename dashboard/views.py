@@ -49,6 +49,19 @@ def dashboard_index(request):
         chart_conversations.append(Conversation.objects.filter(started_at__date=day).count())
         chart_requests.append(ServiceRequest.objects.filter(timestamp__date=day).count())
     
+    # حالة Evolution API
+    try:
+        from whatsapp.evolution_api import evolution_api
+        from django.conf import settings as django_settings
+        evolution_configured = bool(
+            getattr(django_settings, 'EVOLUTION_API_URL', '') and
+            getattr(django_settings, 'EVOLUTION_API_KEY', '')
+        )
+        whatsapp_connected = evolution_api.is_connected() if evolution_configured else False
+    except Exception:
+        evolution_configured = False
+        whatsapp_connected = False
+
     context = {
         'stats': stats,
         'recent_users': recent_users,
@@ -56,6 +69,8 @@ def dashboard_index(request):
         'chart_labels': json.dumps(chart_labels),
         'chart_conversations': json.dumps(chart_conversations),
         'chart_requests': json.dumps(chart_requests),
+        'evolution_configured': evolution_configured,
+        'whatsapp_connected': whatsapp_connected,
     }
     return render(request, 'dashboard/index.html', context)
 
@@ -394,6 +409,117 @@ def agent_chat(request):
     
     except Exception as e:
         return JsonResponse({'error': str(e), 'response': 'حدث خطأ في معالجة الرسالة.'}, status=500)
+
+
+@staff_member_required
+def whatsapp_connect(request):
+    """صفحة ربط واتساب عبر Evolution API"""
+    from whatsapp.evolution_api import evolution_api
+    from django.conf import settings as django_settings
+
+    evolution_configured = bool(
+        getattr(django_settings, 'EVOLUTION_API_URL', '') and
+        getattr(django_settings, 'EVOLUTION_API_KEY', '')
+    )
+
+    connected = False
+    qr_base64 = None
+    instance_state = 'unknown'
+
+    if evolution_configured:
+        status_result = evolution_api.get_instance_status()
+        if status_result.get('success'):
+            instance_state = status_result['data'].get('instance', {}).get('state', 'unknown')
+            connected = (instance_state == 'open')
+        else:
+            # الـ instance غير موجود — أنشئه
+            create_result = evolution_api.create_instance()
+            if create_result.get('success'):
+                qr_data = create_result['data'].get('qrcode', {})
+                qr_base64 = qr_data.get('base64', '')
+
+        if not connected and not qr_base64:
+            qr_result = evolution_api.get_qrcode()
+            if qr_result.get('success'):
+                qr_base64 = qr_result['data'].get('base64', '') or qr_result['data'].get('qrcode', {}).get('base64', '')
+
+    webhook_url = getattr(django_settings, 'EVOLUTION_WEBHOOK_URL', '')
+    instance_name = getattr(django_settings, 'EVOLUTION_INSTANCE_NAME', 'dhiban')
+
+    return render(request, 'dashboard/whatsapp_connect.html', {
+        'evolution_configured': evolution_configured,
+        'connected': connected,
+        'instance_state': instance_state,
+        'qr_base64': qr_base64,
+        'webhook_url': webhook_url,
+        'instance_name': instance_name,
+    })
+
+
+@staff_member_required
+@require_http_methods(['POST'])
+def whatsapp_disconnect(request):
+    """قطع اتصال الواتساب"""
+    from whatsapp.evolution_api import evolution_api
+    result = evolution_api.logout_instance()
+    if result.get('success'):
+        messages.success(request, 'تم قطع اتصال الواتساب بنجاح.')
+    else:
+        messages.error(request, f"فشل قطع الاتصال: {result.get('error', 'خطأ غير معروف')}")
+    return redirect('dashboard:whatsapp_connect')
+
+
+@staff_member_required
+def whatsapp_status_api(request):
+    """API لجلب حالة الاتصال وQR Code (تُستخدم بـ AJAX)"""
+    from whatsapp.evolution_api import evolution_api
+    from django.conf import settings as django_settings
+
+    evolution_configured = bool(
+        getattr(django_settings, 'EVOLUTION_API_URL', '') and
+        getattr(django_settings, 'EVOLUTION_API_KEY', '')
+    )
+
+    if not evolution_configured:
+        return JsonResponse({'connected': False, 'state': 'not_configured', 'qr': None})
+
+    status_result = evolution_api.get_instance_status()
+    state = 'unknown'
+    connected = False
+
+    if status_result.get('success'):
+        state = status_result['data'].get('instance', {}).get('state', 'unknown')
+        connected = (state == 'open')
+
+    qr_base64 = None
+    if not connected:
+        qr_result = evolution_api.get_qrcode()
+        if qr_result.get('success'):
+            qr_base64 = (
+                qr_result['data'].get('base64')
+                or qr_result['data'].get('qrcode', {}).get('base64')
+            )
+
+    return JsonResponse({'connected': connected, 'state': state, 'qr': qr_base64})
+
+
+@staff_member_required
+def whatsapp_set_webhook(request):
+    """تعيين webhook URL لـ Evolution API"""
+    from whatsapp.evolution_api import evolution_api
+    from django.conf import settings as django_settings
+
+    webhook_url = getattr(django_settings, 'EVOLUTION_WEBHOOK_URL', '')
+    if not webhook_url:
+        messages.error(request, 'EVOLUTION_WEBHOOK_URL غير محدد في الإعدادات.')
+        return redirect('dashboard:whatsapp_connect')
+
+    result = evolution_api.set_webhook(webhook_url)
+    if result.get('success'):
+        messages.success(request, f'تم تعيين webhook بنجاح: {webhook_url}')
+    else:
+        messages.error(request, f"فشل تعيين webhook: {result.get('error', 'خطأ غير معروف')}")
+    return redirect('dashboard:whatsapp_connect')
 
 
 @staff_member_required

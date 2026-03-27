@@ -34,4 +34,10 @@ urlpatterns = [
     path('agent/', views.agent_test, name='agent_test'),
     path('agent/chat/', views.agent_chat, name='agent_chat'),
     path('agent/settings/', views.agent_settings, name='agent_settings'),
+
+    # WhatsApp Evolution API
+    path('whatsapp/', views.whatsapp_connect, name='whatsapp_connect'),
+    path('whatsapp/disconnect/', views.whatsapp_disconnect, name='whatsapp_disconnect'),
+    path('whatsapp/status/', views.whatsapp_status_api, name='whatsapp_status'),
+    path('whatsapp/set-webhook/', views.whatsapp_set_webhook, name='whatsapp_set_webhook'),
 ]

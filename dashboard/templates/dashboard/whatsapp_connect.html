@@ -1,0 +1,252 @@
+{% extends 'dashboard/base.html' %}
+
+{% block page_title %}ربط واتساب{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+
+        {% if messages %}
+            {% for msg in messages %}
+            <div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+                {{ msg }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+
+        <!-- بطاقة الحالة -->
+        <div class="card mb-4">
+            <div class="card-header d-flex align-items-center gap-2">
+                <i class="bi bi-whatsapp text-success fs-5"></i>
+                <span class="fw-bold">حالة الاتصال بواتساب</span>
+                <span class="ms-auto badge {% if connected %}bg-success{% elif instance_state == 'unknown' %}bg-secondary{% else %}bg-warning text-dark{% endif %}" id="stateBadge">
+                    {% if connected %}متصل ✓{% elif instance_state == 'connecting' %}جاري الاتصال...{% else %}غير متصل{% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                {% if not evolution_configured %}
+                <!-- إعدادات ناقصة -->
+                <div class="alert alert-warning mb-0">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>يلزم تهيئة Evolution API أولاً.</strong><br>
+                    أضف المتغيرات التالية في ملف <code>.env</code>:
+                    <pre class="mt-2 mb-0 bg-light p-3 rounded small">EVOLUTION_API_URL=https://your-evolution-server.com
+EVOLUTION_API_KEY=your-api-key
+EVOLUTION_INSTANCE_NAME=dhiban
+EVOLUTION_WEBHOOK_URL=https://your-domain.com/whatsapp/evolution/webhook/</pre>
+                </div>
+
+                {% elif connected %}
+                <!-- متصل -->
+                <div class="text-center py-3">
+                    <div class="mb-3">
+                        <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+                    </div>
+                    <h5 class="text-success fw-bold">الواتساب متصل بنجاح!</h5>
+                    <p class="text-muted">الوكيل الذكي يستقبل ويرد على رسائل واتساب الآن.</p>
+                    <p class="small text-muted"><strong>الـ Instance:</strong> {{ instance_name }}</p>
+                    <div class="d-flex gap-2 justify-content-center flex-wrap mt-3">
+                        <form method="post" action="{% url 'dashboard:whatsapp_disconnect' %}" onsubmit="return confirm('هل أنت متأكد من قطع الاتصال؟')">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger">
+                                <i class="bi bi-plug me-1"></i>قطع الاتصال
+                            </button>
+                        </form>
+                        <a href="{% url 'dashboard:whatsapp_set_webhook' %}" class="btn btn-outline-primary">
+                            <i class="bi bi-link-45deg me-1"></i>تحديث Webhook
+                        </a>
+                        <button class="btn btn-outline-secondary" onclick="refreshStatus()">
+                            <i class="bi bi-arrow-clockwise me-1"></i>تحديث الحالة
+                        </button>
+                    </div>
+                </div>
+
+                {% else %}
+                <!-- غير متصل — عرض QR -->
+                <div class="text-center py-2">
+                    <p class="text-muted mb-3">
+                        <i class="bi bi-phone me-1"></i>
+                        افتح واتساب على هاتفك ← <strong>الأجهزة المرتبطة</strong> ← <strong>ربط جهاز</strong> ← امسح الكود
+                    </p>
+
+                    <div id="qrContainer">
+                        {% if qr_base64 %}
+                            <img id="qrImage" src="{{ qr_base64 }}" alt="QR Code"
+                                 class="border rounded shadow-sm"
+                                 style="max-width:280px; width:100%;">
+                            <p class="text-muted small mt-2">
+                                <i class="bi bi-clock me-1"></i>
+                                ينتهي الكود خلال <span id="countdown">60</span> ثانية
+                            </p>
+                        {% else %}
+                            <div id="qrLoading" class="py-4">
+                                <div class="spinner-border text-success mb-3" role="status"></div>
+                                <p class="text-muted">جاري تحميل QR Code...</p>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-flex gap-2 justify-content-center flex-wrap mt-3">
+                        <button class="btn btn-success" onclick="refreshQR()" id="refreshBtn">
+                            <i class="bi bi-arrow-clockwise me-1"></i>تحديث QR Code
+                        </button>
+                        <a href="{% url 'dashboard:whatsapp_set_webhook' %}" class="btn btn-outline-primary">
+                            <i class="bi bi-link-45deg me-1"></i>تعيين Webhook
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- معلومات الإعداد -->
+        {% if evolution_configured %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>معلومات الاتصال
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td class="text-muted" width="40%">Instance Name</td>
+                            <td><code>{{ instance_name }}</code></td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">حالة الـ Instance</td>
+                            <td>
+                                <span class="badge {% if connected %}bg-success{% else %}bg-secondary{% endif %}">
+                                    {{ instance_state }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Webhook URL</td>
+                            <td>
+                                {% if webhook_url %}
+                                    <code class="small">{{ webhook_url }}</code>
+                                {% else %}
+                                    <span class="text-danger small">غير محدد</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- خطوات الإعداد -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-list-ol me-2"></i>خطوات الإعداد
+            </div>
+            <div class="card-body">
+                <ol class="mb-0">
+                    <li class="mb-2">ثبّت Evolution API v2 على سيرفرك أو استخدم خدمة مستضافة</li>
+                    <li class="mb-2">أضف متغيرات <code>EVOLUTION_API_URL</code> و<code>EVOLUTION_API_KEY</code> في ملف <code>.env</code></li>
+                    <li class="mb-2">حدد <code>EVOLUTION_WEBHOOK_URL</code> بعنوان <code>/whatsapp/evolution/webhook/</code> من نطاق موقعك</li>
+                    <li class="mb-2">افتح هذه الصفحة وامسح QR Code من واتساب</li>
+                    <li>اضغط "تعيين Webhook" لربط الوكيل باستقبال الرسائل</li>
+                </ol>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let countdownInterval = null;
+let autoRefreshInterval = null;
+let secondsLeft = 60;
+
+function updateStateBadge(state, connected) {
+    const badge = document.getElementById('stateBadge');
+    if (!badge) return;
+    if (connected) {
+        badge.className = 'ms-auto badge bg-success';
+        badge.textContent = 'متصل ✓';
+    } else if (state === 'connecting') {
+        badge.className = 'ms-auto badge bg-warning text-dark';
+        badge.textContent = 'جاري الاتصال...';
+    } else {
+        badge.className = 'ms-auto badge bg-secondary';
+        badge.textContent = 'غير متصل';
+    }
+}
+
+function startCountdown() {
+    secondsLeft = 60;
+    clearInterval(countdownInterval);
+    const el = document.getElementById('countdown');
+    if (!el) return;
+    countdownInterval = setInterval(() => {
+        secondsLeft--;
+        el.textContent = secondsLeft;
+        if (secondsLeft <= 0) {
+            clearInterval(countdownInterval);
+            el.textContent = '0';
+        }
+    }, 1000);
+}
+
+async function refreshStatus() {
+    try {
+        const resp = await fetch('{% url "dashboard:whatsapp_status" %}');
+        const data = await resp.json();
+        updateStateBadge(data.state, data.connected);
+        if (data.connected) {
+            clearInterval(autoRefreshInterval);
+            location.reload();
+        }
+    } catch (e) {
+        console.error('Status check failed:', e);
+    }
+}
+
+async function refreshQR() {
+    const btn = document.getElementById('refreshBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>جاري التحديث...'; }
+
+    try {
+        const resp = await fetch('{% url "dashboard:whatsapp_status" %}');
+        const data = await resp.json();
+        updateStateBadge(data.state, data.connected);
+
+        if (data.connected) {
+            clearInterval(autoRefreshInterval);
+            location.reload();
+            return;
+        }
+
+        if (data.qr) {
+            const container = document.getElementById('qrContainer');
+            if (container) {
+                container.innerHTML = `
+                    <img id="qrImage" src="${data.qr}" alt="QR Code"
+                         class="border rounded shadow-sm"
+                         style="max-width:280px; width:100%;">
+                    <p class="text-muted small mt-2">
+                        <i class="bi bi-clock me-1"></i>
+                        ينتهي الكود خلال <span id="countdown">60</span> ثانية
+                    </p>`;
+                startCountdown();
+            }
+        }
+    } catch (e) {
+        console.error('QR refresh failed:', e);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>تحديث QR Code'; }
+    }
+}
+
+// تحديث تلقائي كل 5 ثوانٍ للتحقق من الاتصال
+{% if evolution_configured and not connected %}
+autoRefreshInterval = setInterval(refreshStatus, 5000);
+startCountdown();
+{% endif %}
+</script>
+{% endblock %}
