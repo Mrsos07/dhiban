@@ -4,7 +4,6 @@ Evolution API v2 Client
 يدعم: atendai/evolution-api:latest
 """
 import requests
-import requests.exceptions
 import logging
 from django.conf import settings
 from typing import Optional, Dict, List
@@ -36,17 +35,14 @@ class EvolutionAPI:
             resp = requests.get(url, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else 0
+        except Exception as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', 0)
             try:
-                body = e.response.json()
+                body = e.response.json() if hasattr(e, 'response') and e.response else {}
             except Exception:
                 body = {}
-            logger.error(f"Evolution API GET HTTP {status} [{path}]: {body}")
+            logger.error(f"Evolution API GET error [{path}] HTTP {status}: {e}")
             return {'success': False, 'error': str(e), 'status': status, 'body': body}
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Evolution API GET error [{path}]: {e}")
-            return {'success': False, 'error': str(e)}
 
     def _post(self, path: str, payload: Dict = None) -> Dict:
         url = f"{self.base_url}{path}"
@@ -59,17 +55,14 @@ class EvolutionAPI:
             )
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else 0
+        except Exception as e:
+            status = getattr(getattr(e, 'response', None), 'status_code', 0)
             try:
-                body = e.response.json()
+                body = e.response.json() if hasattr(e, 'response') and e.response else {}
             except Exception:
                 body = {}
-            logger.error(f"Evolution API POST HTTP {status} [{path}]: {body}")
+            logger.error(f"Evolution API POST error [{path}] HTTP {status}: {e}")
             return {'success': False, 'error': str(e), 'status': status, 'body': body}
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Evolution API POST error [{path}]: {e}")
-            return {'success': False, 'error': str(e)}
 
     def _delete(self, path: str) -> Dict:
         url = f"{self.base_url}{path}"
@@ -77,7 +70,7 @@ class EvolutionAPI:
             resp = requests.delete(url, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"Evolution API DELETE error [{path}]: {e}")
             return {'success': False, 'error': str(e)}
 
