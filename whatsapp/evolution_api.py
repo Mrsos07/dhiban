@@ -1,18 +1,19 @@
 """
 Evolution API v2 Client
 للتكامل مع Evolution API لربط WhatsApp
+يدعم: atendai/evolution-api:latest
 """
 import requests
 import logging
 from django.conf import settings
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 logger = logging.getLogger(__name__)
 
 
 class EvolutionAPI:
     """
-    Client لـ Evolution API v2
+    Client لـ Evolution API v2 (latest)
     يدير إنشاء الجلسة، جلب QR Code، وإرسال الرسائل
     """
 
@@ -34,6 +35,14 @@ class EvolutionAPI:
             resp = requests.get(url, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else 0
+            try:
+                body = e.response.json()
+            except Exception:
+                body = {}
+            logger.error(f"Evolution API GET HTTP {status} [{path}]: {body}")
+            return {'success': False, 'error': str(e), 'status': status, 'body': body}
         except requests.exceptions.RequestException as e:
             logger.error(f"Evolution API GET error [{path}]: {e}")
             return {'success': False, 'error': str(e)}
@@ -49,6 +58,14 @@ class EvolutionAPI:
             )
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else 0
+            try:
+                body = e.response.json()
+            except Exception:
+                body = {}
+            logger.error(f"Evolution API POST HTTP {status} [{path}]: {body}")
+            return {'success': False, 'error': str(e), 'status': status, 'body': body}
         except requests.exceptions.RequestException as e:
             logger.error(f"Evolution API POST error [{path}]: {e}")
             return {'success': False, 'error': str(e)}
@@ -65,8 +82,21 @@ class EvolutionAPI:
 
     # ─── Instance Management ───────────────────────────────────────────────────
 
+    def instance_exists(self) -> bool:
+        """التحقق من وجود الـ instance"""
+        result = self._get(f'/instance/fetchInstances')
+        if result.get('success'):
+            instances = result['data']
+            if isinstance(instances, list):
+                return any(
+                    i.get('instance', {}).get('instanceName') == self.instance_name
+                    or i.get('instanceName') == self.instance_name
+                    for i in instances
+                )
+        return False
+
     def create_instance(self) -> Dict:
-        """إنشاء instance جديد"""
+        """إنشاء instance جديد مع webhook"""
         webhook_url = getattr(settings, 'EVOLUTION_WEBHOOK_URL', '')
         payload = {
             'instanceName': self.instance_name,
@@ -95,6 +125,63 @@ class EvolutionAPI:
         """جلب QR Code للاتصال"""
         return self._get(f'/instance/connect/{self.instance_name}')
 
+    def extract_qr_base64(self, data: dict) -> Optional[str]:
+        """
+        استخراج base64 من أي صيغة يعيدها Evolution API latest:
+        - { "base64": "data:image/png;base64,..." }
+        - { "qrcode": { "base64": "..." } }
+        - { "code": "...", "base64": "..." }
+        """
+        if not data:
+            return None
+        # صيغة 1: مباشر
+        if data.get('base64'):
+            b64 = data['base64']
+            return b64 if b64.startswith('data:') else f'data:image/png;base64,{b64}'
+        # صيغة 2: متداخل في qrcode
+        qr = data.get('qrcode', {})
+        if isinstance(qr, dict) and qr.get('base64'):
+            b64 = qr['base64']
+            return b64 if b64.startswith('data:') else f'data:image/png;base64,{b64}'
+        # صيغة 3: في instance.qrcode
+        inst = data.get('instance', {})
+        if isinstance(inst, dict):
+            qr2 = inst.get('qrcode', {})
+            if isinstance(qr2, dict) and qr2.get('base64'):
+                b64 = qr2['base64']
+                return b64 if b64.startswith('data:') else f'data:image/png;base64,{b64}'
+        return None
+
+    def get_or_create_qrcode(self) -> Optional[str]:
+        """
+        يحاول جلب QR Code، وإذا لم يجد الـ instance ينشئه أولاً.
+        يعيد base64 string أو None.
+        """
+        # أولاً: جرب جلب الـ QR مباشرة
+        result = self.get_qrcode()
+        if result.get('success'):
+            qr = self.extract_qr_base64(result['data'])
+            if qr:
+                return qr
+
+        # ثانياً: إذا 404 أو instance غير موجود — أنشئه
+        status_code = result.get('status', 0)
+        if status_code in (404, 400) or not result.get('success'):
+            logger.info("Instance not found, creating...")
+            create_result = self.create_instance()
+            if create_result.get('success'):
+                qr = self.extract_qr_base64(create_result['data'])
+                if qr:
+                    return qr
+                # أحياناً لا يأتي QR مع الإنشاء — نجلبه بعدها
+                import time
+                time.sleep(2)
+                result2 = self.get_qrcode()
+                if result2.get('success'):
+                    return self.extract_qr_base64(result2['data'])
+
+        return None
+
     def logout_instance(self) -> Dict:
         """قطع الاتصال (logout)"""
         return self._delete(f'/instance/logout/{self.instance_name}')
@@ -109,10 +196,18 @@ class EvolutionAPI:
 
     def is_connected(self) -> bool:
         """التحقق من حالة الاتصال"""
-        result = self.get_instance_status()
-        if result.get('success'):
-            state = result['data'].get('instance', {}).get('state', '')
-            return state == 'open'
+        try:
+            result = self.get_instance_status()
+            if result.get('success'):
+                data = result['data']
+                # صيغة: { "instance": { "state": "open" } }
+                state = data.get('instance', {}).get('state', '')
+                if not state:
+                    # صيغة بديلة: { "state": "open" }
+                    state = data.get('state', '')
+                return state == 'open'
+        except Exception as e:
+            logger.error(f"is_connected error: {e}")
         return False
 
     # ─── Messaging ─────────────────────────────────────────────────────────────
@@ -124,7 +219,10 @@ class EvolutionAPI:
             'number': phone,
             'text': message,
         }
-        return self._post(f'/message/sendText/{self.instance_name}', payload)
+        result = self._post(f'/message/sendText/{self.instance_name}', payload)
+        if not result.get('success'):
+            logger.error(f"send_text failed to {phone}: {result.get('error')}")
+        return result
 
     def send_image(self, phone: str, image_url: str, caption: str = '') -> Dict:
         """إرسال صورة"""
@@ -138,38 +236,20 @@ class EvolutionAPI:
         }
         return self._post(f'/message/sendMedia/{self.instance_name}', payload)
 
-    def send_buttons(self, phone: str, text: str, buttons: list, title: str = '') -> Dict:
-        """إرسال أزرار تفاعلية"""
-        phone = self._normalize_phone(phone)
-        payload = {
-            'number': phone,
-            'title': title,
-            'description': text,
-            'footer': 'ذيبان - الدليل الذكي',
-            'buttons': [
-                {'type': 'reply', 'displayText': btn.get('title', ''), 'id': btn.get('id', '')}
-                for btn in buttons[:3]
-            ],
-        }
-        return self._post(f'/message/sendButtons/{self.instance_name}', payload)
-
     # ─── Webhook Setup ──────────────────────────────────────────────────────────
 
     def set_webhook(self, webhook_url: str) -> Dict:
         """تعيين webhook URL"""
         payload = {
-            'webhook': {
-                'enabled': True,
-                'url': webhook_url,
-                'byEvents': False,
-                'base64': False,
-                'events': [
-                    'MESSAGES_UPSERT',
-                    'MESSAGES_UPDATE',
-                    'CONNECTION_UPDATE',
-                    'QRCODE_UPDATED',
-                ],
-            }
+            'url': webhook_url,
+            'byEvents': False,
+            'base64': False,
+            'events': [
+                'MESSAGES_UPSERT',
+                'MESSAGES_UPDATE',
+                'CONNECTION_UPDATE',
+                'QRCODE_UPDATED',
+            ],
         }
         return self._post(f'/webhook/set/{self.instance_name}', payload)
 
@@ -177,9 +257,8 @@ class EvolutionAPI:
 
     @staticmethod
     def _normalize_phone(phone: str) -> str:
-        """تنسيق رقم الهاتف — يزيل + ويضيف كود الدولة إذا لزم"""
-        phone = phone.strip().replace('+', '').replace(' ', '').replace('-', '')
-        return phone
+        """تنسيق رقم الهاتف — يزيل + والمسافات والشرطات"""
+        return phone.strip().replace('+', '').replace(' ', '').replace('-', '')
 
 
 # Singleton instance

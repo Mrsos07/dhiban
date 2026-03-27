@@ -427,21 +427,17 @@ def whatsapp_connect(request):
     instance_state = 'unknown'
 
     if evolution_configured:
+        # جلب حالة الاتصال مع دعم كلا الصيغتين
         status_result = evolution_api.get_instance_status()
         if status_result.get('success'):
-            instance_state = status_result['data'].get('instance', {}).get('state', 'unknown')
-            connected = (instance_state == 'open')
-        else:
-            # الـ instance غير موجود — أنشئه
-            create_result = evolution_api.create_instance()
-            if create_result.get('success'):
-                qr_data = create_result['data'].get('qrcode', {})
-                qr_base64 = qr_data.get('base64', '')
+            data = status_result['data']
+            state = data.get('instance', {}).get('state', '') or data.get('state', '')
+            instance_state = state or 'unknown'
+            connected = (state == 'open')
 
-        if not connected and not qr_base64:
-            qr_result = evolution_api.get_qrcode()
-            if qr_result.get('success'):
-                qr_base64 = qr_result['data'].get('base64', '') or qr_result['data'].get('qrcode', {}).get('base64', '')
+        if not connected:
+            # استخدام get_or_create_qrcode الذكية
+            qr_base64 = evolution_api.get_or_create_qrcode()
 
     webhook_url = getattr(django_settings, 'EVOLUTION_WEBHOOK_URL', '')
     instance_name = getattr(django_settings, 'EVOLUTION_INSTANCE_NAME', 'dhiban')
@@ -488,17 +484,16 @@ def whatsapp_status_api(request):
     connected = False
 
     if status_result.get('success'):
-        state = status_result['data'].get('instance', {}).get('state', 'unknown')
+        data = status_result['data']
+        state = data.get('instance', {}).get('state', '') or data.get('state', 'unknown')
         connected = (state == 'open')
 
     qr_base64 = None
     if not connected:
+        # جلب QR مع دعم جميع الصيغ
         qr_result = evolution_api.get_qrcode()
         if qr_result.get('success'):
-            qr_base64 = (
-                qr_result['data'].get('base64')
-                or qr_result['data'].get('qrcode', {}).get('base64')
-            )
+            qr_base64 = evolution_api.extract_qr_base64(qr_result['data'])
 
     return JsonResponse({'connected': connected, 'state': state, 'qr': qr_base64})
 

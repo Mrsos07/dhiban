@@ -1,13 +1,13 @@
 """
 Evolution API v2 Webhook Handler
-يستقبل الرسائل الواردة من Evolution API ويعالجها بالوكيل
+يستقبل الرسائل الواردة من Evolution API ويعالجها بالوكيل الذكي مع جميع الأدوات
+يدعم: atendai/evolution-api:latest
 """
 import json
 import logging
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.conf import settings
 from django.utils import timezone
 
 from users.models import WhatsAppUser
@@ -17,47 +17,74 @@ from .evolution_api import evolution_api
 logger = logging.getLogger(__name__)
 
 
+def _extract_text_from_message(message: dict) -> str:
+    """استخراج النص من جميع أنواع رسائل Evolution API"""
+    return (
+        message.get('conversation')
+        or message.get('extendedTextMessage', {}).get('text', '')
+        or message.get('buttonsResponseMessage', {}).get('selectedDisplayText', '')
+        or message.get('listResponseMessage', {}).get('title', '')
+        or message.get('templateButtonReplyMessage', {}).get('selectedDisplayText', '')
+        or message.get('interactiveResponseMessage', {}).get('nativeFlowResponseMessage', {}).get('paramsJson', '')
+        or ''
+    )
+
+
 def extract_evolution_message(data: dict) -> dict:
-    """استخراج بيانات الرسالة من payload الخاص بـ Evolution API v2"""
+    """
+    استخراج بيانات الرسالة من payload الخاص بـ Evolution API latest.
+    يدعم صيغتين للـ event name:
+      - الجديد: { event: "messages.upsert", data: { key: {...}, message: {...} } }
+      - القديم: { event: "MESSAGES_UPSERT", data: [{ key: {...}, message: {...} }] }
+    """
     try:
         event = data.get('event', '')
         instance = data.get('instance', '')
 
-        if event == 'QRCODE_UPDATED':
-            return {'event': 'qrcode', 'qrcode': data.get('data', {}).get('qrcode', {}).get('base64', '')}
+        # أحداث غير رسائل
+        if event in ('QRCODE_UPDATED', 'qrcode.updated'):
+            qr = data.get('data', {}).get('qrcode', {}).get('base64', '')
+            return {'event': 'qrcode', 'qrcode': qr}
 
-        if event == 'CONNECTION_UPDATE':
+        if event in ('CONNECTION_UPDATE', 'connection.update'):
             state = data.get('data', {}).get('state', '')
-            return {'event': 'connection', 'state': state}
+            return {'event': 'connection', 'state': state, 'instance': instance}
 
-        if event not in ('messages.upsert', 'MESSAGES_UPSERT'):
+        # تجاهل أي حدث غير رسائل
+        if event not in ('messages.upsert', 'MESSAGES_UPSERT', 'message'):
+            logger.debug(f"Ignoring event: {event}")
             return None
 
-        msg_data = data.get('data', {})
+        raw = data.get('data', {})
 
-        # Evolution API v2 format
-        key = msg_data.get('key', {})
+        # صيغة قائمة (بعض الإصدارات ترسل مصفوفة)
+        if isinstance(raw, list):
+            raw = raw[0] if raw else {}
+
+        key = raw.get('key', {})
         from_me = key.get('fromMe', False)
 
         if from_me:
             return None
 
         remote_jid = key.get('remoteJid', '')
-        phone_number = remote_jid.replace('@s.whatsapp.net', '').replace('@g.us', '')
 
-        if not phone_number or '@g.us' in remote_jid:
+        # تجاهل رسائل المجموعات
+        if '@g.us' in remote_jid:
             return None
 
-        message = msg_data.get('message', {})
-        push_name = msg_data.get('pushName', '')
+        phone_number = remote_jid.replace('@s.whatsapp.net', '').strip()
+        if not phone_number:
+            return None
 
-        text = (
-            message.get('conversation')
-            or message.get('extendedTextMessage', {}).get('text', '')
-            or message.get('buttonsResponseMessage', {}).get('selectedDisplayText', '')
-            or message.get('listResponseMessage', {}).get('title', '')
-            or ''
-        )
+        message_obj = raw.get('message', {})
+        push_name = raw.get('pushName', '') or raw.get('notifyName', '')
+        text = _extract_text_from_message(message_obj)
+
+        # تجاهل الرسائل غير النصية (صور، صوت، فيديو)
+        if not text:
+            logger.debug(f"Non-text message from {phone_number}, skipping")
+            return None
 
         return {
             'event': 'message',
@@ -69,7 +96,7 @@ def extract_evolution_message(data: dict) -> dict:
         }
 
     except Exception as e:
-        logger.error(f"Evolution webhook extract error: {e}")
+        logger.error(f"Evolution webhook extract error: {e}", exc_info=True)
         return None
 
 
@@ -98,7 +125,10 @@ def get_or_create_conversation(user: WhatsAppUser) -> Conversation:
 
 
 def process_evolution_message(msg: dict):
-    """معالجة رسالة واردة من Evolution API وإرسال الرد"""
+    """
+    معالجة رسالة واردة وإرسال الرد عبر الوكيل مع جميع الأدوات.
+    يستخدم process_message مباشرةً لضمان عمل Tools كاملة.
+    """
     phone_number = msg.get('phone_number')
     text = msg.get('text', '').strip()
     contact_name = msg.get('contact_name', '')
@@ -106,49 +136,48 @@ def process_evolution_message(msg: dict):
     if not phone_number or not text:
         return
 
+    logger.info(f"Processing message from {phone_number}: {text[:50]}")
+
     user = get_or_create_user(phone_number, contact_name)
     conversation = get_or_create_conversation(user)
-    conversation.add_message('user', text)
 
-    # معالجة رسائل الترحيب
-    greetings = ['مرحبا', 'السلام عليكم', 'هلا', 'اهلا', 'hi', 'hello', 'ابدأ', 'start', 'مرحباً']
-    if any(g in text.lower() for g in greetings):
-        response = (
-            "هلا والله! 🐺\n"
-            "أنا ذيبان، دليلك الذكي في عنيزة!\n\n"
-            "قل لي وش تحتاج وأوصلك لأحسن الخيارات 👇"
-        )
-        evolution_api.send_text(phone_number, response)
-        conversation.add_message('bot', response)
-        return
-
-    # استخدام الوكيل
+    # تمرير الرسالة مباشرةً للوكيل — الوكيل يحفظها بنفسه في process_message
     try:
-        from ai_agent.agent import process_user_message
-        response = process_user_message(text, phone_number)
+        from ai_agent.agent import dhiban_agent
+        # نستخدم process_message مباشرةً برقم الهاتف ك**user_id**
+        # هذا يضمن: ذاكرة المحادثة + جميع Tools (search, google_maps, categories)
+        response = dhiban_agent.process_message(text, user_id=phone_number)
+
         conversation.intent_detected = 'search'
         conversation.save(update_fields=['intent_detected'])
+
     except Exception as e:
-        logger.error(f"AI Agent error: {e}")
+        logger.error(f"AI Agent error for {phone_number}: {e}", exc_info=True)
         response = "عذراً حدث خطأ. جرب مرة ثانية 🐺"
 
     if response:
-        evolution_api.send_text(phone_number, response)
-        conversation.add_message('bot', response)
+        result = evolution_api.send_text(phone_number, response)
+        if result.get('success'):
+            logger.info(f"Reply sent to {phone_number}")
+            conversation.add_message('bot', response)
+        else:
+            logger.error(f"Failed to send reply to {phone_number}: {result.get('error')}")
 
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def evolution_webhook_handler(request):
-    """Webhook handler لـ Evolution API v2"""
+    """Webhook handler لـ Evolution API v2 (latest)"""
 
     if request.method == "GET":
         return HttpResponse('Evolution Webhook OK', content_type='text/plain')
 
     if request.method == "POST":
         try:
-            data = json.loads(request.body)
-            logger.info(f"Evolution webhook received: event={data.get('event', 'unknown')}")
+            body = request.body
+            data = json.loads(body)
+            event = data.get('event', 'unknown')
+            logger.info(f"Evolution webhook: event={event}, instance={data.get('instance', '')}")
 
             msg = extract_evolution_message(data)
 
@@ -158,17 +187,18 @@ def evolution_webhook_handler(request):
             if msg.get('event') == 'message':
                 process_evolution_message(msg)
             elif msg.get('event') == 'connection':
-                logger.info(f"Evolution connection state: {msg.get('state')}")
+                state = msg.get('state', '')
+                logger.info(f"WhatsApp connection state: {state}")
             elif msg.get('event') == 'qrcode':
-                logger.info("Evolution QR code updated")
+                logger.info("QR code updated via webhook")
 
             return HttpResponse('OK', status=200)
 
         except json.JSONDecodeError:
-            logger.error("Evolution webhook: invalid JSON")
+            logger.error("Evolution webhook: invalid JSON body")
             return HttpResponse('Bad Request', status=400)
         except Exception as e:
-            logger.error(f"Evolution webhook error: {e}", exc_info=True)
+            logger.error(f"Evolution webhook unhandled error: {e}", exc_info=True)
             return HttpResponse('OK', status=200)
 
     return HttpResponse('Method Not Allowed', status=405)
