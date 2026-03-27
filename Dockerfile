@@ -1,5 +1,6 @@
 # Dockerfile for Dhiban - Django Application
 # Optimized for Render deployment
+# Build: 2026-03-27-v2
 
 FROM python:3.11-slim
 
