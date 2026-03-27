@@ -4,6 +4,7 @@ Evolution API v2 Client
 يدعم: atendai/evolution-api:latest
 """
 import requests
+import requests.exceptions
 import logging
 from django.conf import settings
 from typing import Optional, Dict, List
