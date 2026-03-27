@@ -114,20 +114,42 @@ def get_or_create_user(phone_number: str, name: str = '') -> WhatsAppUser:
 
 
 def get_or_create_conversation(user: WhatsAppUser) -> Conversation:
+    """
+    جلب محادثة نشطة خلال آخر 24 ساعة أو إنشاء محادثة جديدة.
+    نافذة 24 ساعة تضمن استمرارية الذاكرة خلال اليوم.
+    """
     recent = Conversation.objects.filter(
         user=user,
         ended_at__isnull=True,
         started_at__gte=timezone.now() - timezone.timedelta(hours=24),
-    ).first()
+    ).order_by('-started_at').first()
     if recent:
         return recent
     return Conversation.objects.create(user=user)
 
 
+def build_chat_history(conversation: Conversation) -> list:
+    """
+    بناء تاريخ المحادثة بصيغة OpenAI من آخر 10 رسائل.
+    """
+    if not conversation.messages:
+        return []
+    recent = conversation.messages[-10:]
+    history = []
+    for msg in recent:
+        role = 'user' if msg.get('role') == 'user' else 'assistant'
+        content = msg.get('content', '')
+        if content:
+            history.append({'role': role, 'content': content})
+    return history
+
+
 def process_evolution_message(msg: dict):
     """
-    معالجة رسالة واردة وإرسال الرد عبر الوكيل مع جميع الأدوات.
-    يستخدم process_message مباشرةً لضمان عمل Tools كاملة.
+    معالجة رسالة واردة وإرسال الرد عبر الوكيل.
+    - يحفظ رسالة المستخدم في المحادثة
+    - يمرر تاريخ المحادثة للوكيل (ذاكرة)
+    - يحفظ رد الوكيل في نفس المحادثة
     """
     phone_number = msg.get('phone_number')
     text = msg.get('text', '').strip()
@@ -141,12 +163,19 @@ def process_evolution_message(msg: dict):
     user = get_or_create_user(phone_number, contact_name)
     conversation = get_or_create_conversation(user)
 
-    # تمرير الرسالة مباشرةً للوكيل — الوكيل يحفظها بنفسه في process_message
+    # حفظ رسالة المستخدم في المحادثة
+    conversation.add_message('user', text)
+
+    # بناء تاريخ المحادثة للذاكرة (بدون الرسالة الحالية لتجنب التكرار)
+    history = build_chat_history(conversation)
+    # إزالة آخر رسالة (التي أضفناها للتو) من الـ history الممرر للوكيل
+    if history and history[-1].get('role') == 'user':
+        history = history[:-1]
+
     try:
         from ai_agent.agent import dhiban_agent
-        # نستخدم process_message مباشرةً برقم الهاتف ك**user_id**
-        # هذا يضمن: ذاكرة المحادثة + جميع Tools (search, google_maps, categories)
-        response = dhiban_agent.process_message(text, user_id=phone_number)
+        # process_message_with_history يضمن: ذاكرة كاملة + جميع Tools
+        response = dhiban_agent.process_message_with_history(text, chat_history=history)
 
         conversation.intent_detected = 'search'
         conversation.save(update_fields=['intent_detected'])
@@ -159,9 +188,10 @@ def process_evolution_message(msg: dict):
         result = evolution_api.send_text(phone_number, response)
         if result.get('success'):
             logger.info(f"Reply sent to {phone_number}")
-            conversation.add_message('bot', response)
         else:
             logger.error(f"Failed to send reply to {phone_number}: {result.get('error')}")
+        # حفظ رد الوكيل دائماً حتى لو فشل الإرسال (للسجل)
+        conversation.add_message('bot', response)
 
 
 @csrf_exempt
