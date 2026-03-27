@@ -137,8 +137,7 @@ class DhibanAgent:
                     is_partner=arguments.get("is_partner")
                 )
                 if results:
-                    formatted = format_search_results({'database_results': results, 'google_results': [], 'total': len(results)})
-                    return formatted + "\n\n[مهم: أرسل روابط 🗺️ كما هي بدون تعديل]"
+                    return format_search_results({'database_results': results, 'google_results': [], 'total': len(results)})
                 return "لم أجد نتائج في قاعدة البيانات."
             
             elif tool_name == "search_google_places":
@@ -149,8 +148,7 @@ class DhibanAgent:
                     limit=5
                 )
                 if results:
-                    formatted = format_google_results(results, query)
-                    return formatted + "\n\n[مهم: أرسل روابط 🗺️ كما هي بدون تعديل]"
+                    return format_google_results(results, query)
                 return f"لم أجد نتائج لـ '{query}' في Google Maps."
             
             elif tool_name == "combined_search":
@@ -159,8 +157,7 @@ class DhibanAgent:
                     category=arguments.get("category"),
                     keywords=arguments.get("keywords")
                 )
-                formatted = format_search_results(results, arguments.get("query", ""))
-                return formatted + "\n\n[مهم: أرسل روابط 🗺️ كما هي بدون تعديل]"
+                return format_search_results(results, arguments.get("query", ""))
             
             elif tool_name == "get_categories":
                 categories = get_categories()
@@ -228,41 +225,24 @@ class DhibanAgent:
             
             # إذا طلب الـ AI استخدام أداة
             if assistant_message.tool_calls:
-                tool_results = []
-                for tool_call in assistant_message.tool_calls:
-                    tool_name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
-                    
-                    logger.info(f"Tool call: {tool_name} | args: {arguments}")
-                    result = self._execute_tool(tool_name, arguments)
-                    
-                    # إذا لم نجد نتائج في الموردين، نبحث في Google تلقائياً
-                    if tool_name == "search_suppliers" and "لم أجد" in result:
-                        query = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
-                        google_result = search_google_places(query=query, limit=3)
-                        if google_result:
-                            result = format_google_results(google_result, query)
-                    
-                    tool_results.append({
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "content": result
-                    })
+                tool_call = assistant_message.tool_calls[0]
+                tool_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
                 
-                # إرسال نتائج الأدوات لـ OpenAI ليصيغ الرد بنفسه
-                messages.append(assistant_message)
-                messages.extend(tool_results)
+                logger.info(f"Tool call: {tool_name} | args: {arguments}")
+                result = self._execute_tool(tool_name, arguments)
                 
-                final_response = self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
+                # إذا لم نجد في الموردين ابحث في Google تلقائياً
+                if tool_name == "search_suppliers" and "لم أجد" in result:
+                    q = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
+                    google_result = search_google_places(query=q, limit=3)
+                    if google_result:
+                        result = format_google_results(google_result, q)
                 
-                bot_response = final_response.choices[0].message.content
-                self._save_message(user_id, 'bot', bot_response)
-                return bot_response
+                # إرجاع نتيجة الأداة مباشرة بدون إعادة صياغة من OpenAI
+                # هذا يضمن الحفاظ على رقم الجوال ورابط الخريطة كما هو
+                self._save_message(user_id, 'bot', result)
+                return result
             
             # رد مباشر من OpenAI بدون أدوات
             bot_response = assistant_message.content
@@ -315,48 +295,30 @@ class DhibanAgent:
             assistant_message = response.choices[0].message
             
             if assistant_message.tool_calls:
-                tool_results = []
-                for tool_call in assistant_message.tool_calls:
-                    tool_name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
-                    
-                    logger.info(f"Tool call: {tool_name} | args: {arguments}")
-                    result = self._execute_tool(tool_name, arguments)
-                    
-                    if tool_name == "search_suppliers" and "لم أجد" in result:
-                        query = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
-                        google_result = search_google_places(query=query, limit=3)
-                        if google_result:
-                            result = format_google_results(google_result, query)
-                    
-                    tool_results.append({
-                        "tool_call_id": tool_call.id,
-                        "role": "tool",
-                        "content": result
-                    })
+                tool_call = assistant_message.tool_calls[0]
+                tool_name = tool_call.function.name
+                arguments = json.loads(tool_call.function.arguments)
                 
-                messages.append(assistant_message)
-                messages.extend(tool_results)
+                logger.info(f"Tool call: {tool_name} | args: {arguments}")
+                result = self._execute_tool(tool_name, arguments)
                 
-                final_response = self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                )
-                bot_response = final_response.choices[0].message.content
-                if not bot_response:
-                    bot_response = "وش تبي بالضبط؟ وضح أكثر 🐺"
-                return bot_response
+                if tool_name == "search_suppliers" and "لم أجد" in result:
+                    q = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
+                    google_result = search_google_places(query=q, limit=3)
+                    if google_result:
+                        result = format_google_results(google_result, q)
+                
+                # إرجاع نتيجة الأداة مباشرة بدون إعادة صياغة
+                return result
             
             bot_response = assistant_message.content
             if not bot_response:
-                bot_response = "وش تبي بالضبط؟ وضح أكثر 🐺"
+                bot_response = "وش تبي بالضبط؟ وضح أكثر"
             return bot_response
         
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
-            return "صار خطأ، جرب مرة ثانية 🐺"
+            return "صار خطأ، جرب مرة ثانية"
 
     def get_greeting(self) -> str:
         """رسالة الترحيب - تُقرأ من إعدادات قاعدة البيانات"""
