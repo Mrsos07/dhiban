@@ -48,7 +48,8 @@ def search_suppliers(
     
     results = []
     for supplier in queryset:
-        # بناء رابط الموقع
+        import urllib.parse
+        # بناء رابط الموقع — دائماً موجود
         maps_url = ''
         if hasattr(supplier, 'google_maps_url') and supplier.google_maps_url:
             maps_url = supplier.google_maps_url
@@ -56,6 +57,12 @@ def search_suppliers(
             lat = supplier.location.get('lat')
             lng = supplier.location.get('lng')
             maps_url = f"https://maps.google.com/?q={lat},{lng}"
+        else:
+            # fallback: بحث بالاسم في عنيزة
+            name = supplier.name_ar or supplier.name_en or ''
+            if name:
+                q = urllib.parse.quote(f"{name} عنيزة")
+                maps_url = f"https://www.google.com/maps/search/{q}"
         
         results.append({
             'id': str(supplier.id),

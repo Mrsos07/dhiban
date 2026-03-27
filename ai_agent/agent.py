@@ -137,7 +137,8 @@ class DhibanAgent:
                     is_partner=arguments.get("is_partner")
                 )
                 if results:
-                    return format_search_results({'database_results': results, 'google_results': [], 'total': len(results)})
+                    formatted = format_search_results({'database_results': results, 'google_results': [], 'total': len(results)})
+                    return formatted + "\n\n[مهم: أرسل روابط 🗺️ كما هي بدون تعديل]"
                 return "لم أجد نتائج في قاعدة البيانات."
             
             elif tool_name == "search_google_places":
@@ -148,7 +149,8 @@ class DhibanAgent:
                     limit=5
                 )
                 if results:
-                    return format_google_results(results, query)
+                    formatted = format_google_results(results, query)
+                    return formatted + "\n\n[مهم: أرسل روابط 🗺️ كما هي بدون تعديل]"
                 return f"لم أجد نتائج لـ '{query}' في Google Maps."
             
             elif tool_name == "combined_search":
@@ -157,7 +159,8 @@ class DhibanAgent:
                     category=arguments.get("category"),
                     keywords=arguments.get("keywords")
                 )
-                return format_search_results(results, arguments.get("query", ""))
+                formatted = format_search_results(results, arguments.get("query", ""))
+                return formatted + "\n\n[مهم: أرسل روابط 🗺️ كما هي بدون تعديل]"
             
             elif tool_name == "get_categories":
                 categories = get_categories()
