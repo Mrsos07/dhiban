@@ -1,4 +1,4 @@
-﻿import requests
+﻿import httpx
 import json
 import hashlib
 import hmac
@@ -32,7 +32,7 @@ class WhatsAppAPI:
         url = f"{self.api_url}/{self.phone_number_id}/{endpoint}"
         
         try:
-            response = requests.post(
+            response = httpx.post(
                 url,
                 headers=self._get_headers(),
                 json=payload,
@@ -40,7 +40,7 @@ class WhatsAppAPI:
             )
             response.raise_for_status()
             return {'success': True, 'data': response.json()}
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             logger.error(f"WhatsApp API Error: {str(e)}")
             return {'success': False, 'error': str(e)}
     

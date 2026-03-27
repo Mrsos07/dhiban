@@ -128,7 +128,7 @@ def handle_message(request):
 
 def send_whatsapp_message(to: str, message: str):
     """إرسال رسالة عبر WhatsApp Business API"""
-    import requests
+    import httpx
     
     if not settings.WHATSAPP_ACCESS_TOKEN or not settings.WHATSAPP_PHONE_NUMBER_ID:
         logger.warning("WhatsApp API not configured")
@@ -153,10 +153,10 @@ def send_whatsapp_message(to: str, message: str):
     }
     
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = httpx.post(url, headers=headers, json=payload, timeout=30)
         response.raise_for_status()
         logger.info(f"Message sent to {to}")
         return True
-    except requests.RequestException as e:
+    except Exception as e:
         logger.error(f"Failed to send message to {to}: {e}")
         return False

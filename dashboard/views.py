@@ -15,7 +15,7 @@ import os
 from users.models import WhatsAppUser
 from suppliers.models import Supplier, Category, SubCategory
 from conversations.models import Conversation
-from requests.models import ServiceRequest
+from service_requests.models import ServiceRequest
 from ai_agent.models import AgentSettings
 
 

@@ -197,17 +197,26 @@ class EvolutionAPI:
         return self._post(f'/instance/restart/{self.instance_name}')
 
     def is_connected(self) -> bool:
-        """التحقق من حالة الاتصال"""
+        """التحقق من حالة الاتصال - يدعم جميع صيغ v2.x"""
         try:
             result = self.get_instance_status()
             if result.get('success'):
                 data = result['data']
-                # صيغة: { "instance": { "state": "open" } }
+                # صيغة 1: { "instance": { "state": "open" } }
                 state = data.get('instance', {}).get('state', '')
+                # صيغة 2: { "state": "open" }
                 if not state:
-                    # صيغة بديلة: { "state": "open" }
                     state = data.get('state', '')
-                return state == 'open'
+                # صيغة 3: { "connectionStatus": "open" }
+                if not state:
+                    state = data.get('connectionStatus', '')
+                # صيغة 4: قائمة instances
+                if not state and isinstance(data, list):
+                    for inst in data:
+                        if inst.get('instance', {}).get('instanceName') == self.instance_name:
+                            state = inst.get('instance', {}).get('connectionStatus', '') or inst.get('instance', {}).get('state', '')
+                            break
+                return state in ('open', 'connected', 'CONNECTED')
         except Exception as e:
             logger.error(f"is_connected error: {e}")
         return False

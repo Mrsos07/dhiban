@@ -31,7 +31,7 @@ INSTALLED_APPS = [
     'users',
     'suppliers',
     'conversations',
-    'requests',
+    'service_requests',
     'whatsapp',
     'dashboard',
     'ai_agent',
