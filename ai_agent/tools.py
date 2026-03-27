@@ -308,26 +308,28 @@ def format_google_results(places: List[Dict], query: str = "") -> str:
     
     response = f"🔍 هذي أحسن الخيارات لـ '{query}':\n\n"
     
-    for i, place in enumerate(places[:2], 1):  # أفضل خيارين فقط
+    for i, place in enumerate(places[:2], 1):
         name = place.get('name', 'غير معروف')
         rating = place.get('rating', 0)
         total_ratings = place.get('total_ratings', 0)
-        address = place.get('address', 'غير متوفر')
+        address = place.get('address', '')
         is_open = place.get('is_open')
-        maps_url = place.get('maps_url', '')
         phone = place.get('phone', '')
         
         open_status = "✅ مفتوح" if is_open else ("❌ مغلق" if is_open is False else "")
+        maps_url = build_maps_url(place)
         
         response += f"{i}. *{name}*\n"
-        response += f"   ⭐ {rating}/5 ({total_ratings} تقييم)\n"
-        response += f"   📍 {address}\n"
+        if rating:
+            response += f"   ⭐ {rating}/5 ({total_ratings} تقييم)\n"
+        if address:
+            response += f"   📍 {address}\n"
         if phone:
             response += f"   📞 {phone}\n"
         if open_status:
             response += f"   🕐 {open_status}\n"
         if maps_url:
-            response += f"   🗺️ الموقع: {maps_url}\n"
+            response += f"   🗺️ {maps_url}\n"
         response += "\n"
     
     response += "تبي شي ثاني؟ 🐺"
@@ -379,27 +381,41 @@ def get_categories() -> List[Dict]:
     ]
 
 
+def build_maps_url(supplier: Dict) -> str:
+    """بناء رابط Google Maps من أي بيانات متاحة"""
+    # 1. رابط مباشر من قاعدة البيانات
+    url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
+    if url:
+        return url
+    # 2. إحداثيات lat/lng
+    loc = supplier.get('location', {})
+    lat = loc.get('lat') if isinstance(loc, dict) else None
+    lng = loc.get('lng') if isinstance(loc, dict) else None
+    if lat and lng:
+        return f"https://maps.google.com/?q={lat},{lng}"
+    # 3. بحث بالاسم في عنيزة
+    name = supplier.get('name', '')
+    if name:
+        import urllib.parse
+        query = urllib.parse.quote(f"{name} عنيزة")
+        return f"https://www.google.com/maps/search/{query}"
+    return ''
+
+
 def format_supplier_response(supplier: Dict) -> str:
     """تنسيق رد المورد للمستخدم"""
     response = f"*{supplier.get('name', '')}*\n"
     response += f"   ⭐ {supplier.get('rating', 0)}/5\n"
     
     if supplier.get('phone'):
-        response += f"   📞 {supplier['phone']}\n"
+        response += f"   � {supplier['phone']}\n"
     
-    if supplier.get('address'):
-        response += f"   📍 {supplier['address']}\n"
-    elif supplier.get('location', {}).get('address'):
-        response += f"   📍 {supplier['location']['address']}\n"
-    
-    # رابط الموقع على الخريطة
-    maps_url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
-    if maps_url:
-        response += f"   🗺️ الموقع: {maps_url}\n"
-    elif supplier.get('location', {}).get('lat') and supplier.get('location', {}).get('lng'):
-        lat = supplier['location']['lat']
-        lng = supplier['location']['lng']
-        response += f"   🗺️ الموقع: https://maps.google.com/?q={lat},{lng}\n"
+    address = supplier.get('address', '')
+    if not address:
+        loc = supplier.get('location', {})
+        address = loc.get('address', '') if isinstance(loc, dict) else ''
+    if address:
+        response += f"   � {address}\n"
     
     if supplier.get('is_partner'):
         response += "   ✅ شريك معتمد\n"
@@ -407,6 +423,11 @@ def format_supplier_response(supplier: Dict) -> str:
     if supplier.get('is_open') is not None:
         status = "✅ مفتوح" if supplier['is_open'] else "❌ مغلق"
         response += f"   🕐 {status}\n"
+    
+    # رابط الخريطة دائماً موجود
+    maps_url = build_maps_url(supplier)
+    if maps_url:
+        response += f"   🗺️ {maps_url}\n"
     
     return response.strip()
 

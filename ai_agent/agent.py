@@ -277,7 +277,10 @@ class DhibanAgent:
     
     def process_message_with_history(self, user_message: str, chat_history: List[Dict]) -> str:
         """
-        معالجة رسالة مع تاريخ محادثة مُمرَّر مباشرة (للويب)
+        معالجة رسالة مع تاريخ محادثة مُمرَّر مباشرة.
+        يُستخدم من الويب والواتساب (Evolution API).
+        يقرأ system_prompt/model/temperature من قاعدة البيانات.
+        يدعم جميع الأدوات: search_suppliers, search_google_places, combined_search, get_categories
         """
         if not self.client:
             logger.error("OpenAI client not configured")
@@ -287,8 +290,8 @@ class DhibanAgent:
             db_settings = self._get_settings()
             system_prompt = db_settings.system_prompt if db_settings else DEFAULT_SYSTEM_PROMPT
             model = db_settings.model_name if db_settings else self.model
-            temperature = db_settings.temperature if db_settings else 0.9
-            max_tokens = db_settings.max_tokens if db_settings else 600
+            temperature = float(db_settings.temperature) if db_settings else 0.9
+            max_tokens = int(db_settings.max_tokens) if db_settings else 600
             
             messages = [{"role": "system", "content": system_prompt}]
             
@@ -313,6 +316,8 @@ class DhibanAgent:
                 for tool_call in assistant_message.tool_calls:
                     tool_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
+                    
+                    logger.info(f"Tool call: {tool_name} | args: {arguments}")
                     result = self._execute_tool(tool_name, arguments)
                     
                     if tool_name == "search_suppliers" and "لم أجد" in result:
@@ -336,7 +341,10 @@ class DhibanAgent:
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
-                return final_response.choices[0].message.content
+                bot_response = final_response.choices[0].message.content
+                if not bot_response:
+                    bot_response = "وش تبي بالضبط؟ وضح أكثر 🐺"
+                return bot_response
             
             bot_response = assistant_message.content
             if not bot_response:
