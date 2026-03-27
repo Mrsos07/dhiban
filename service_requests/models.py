@@ -108,6 +108,7 @@ class ServiceRequest(models.Model):
     )
     
     class Meta:
+        db_table = 'requests_servicerequest'
         verbose_name = _('طلب')
         verbose_name_plural = _('الطلبات')
         ordering = ['-timestamp']
