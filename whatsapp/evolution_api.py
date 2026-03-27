@@ -3,7 +3,7 @@ Evolution API v2 Client
 للتكامل مع Evolution API لربط WhatsApp
 يدعم: atendai/evolution-api:latest
 """
-import requests
+import httpx
 import logging
 from django.conf import settings
 from typing import Optional, Dict, List
@@ -32,7 +32,7 @@ class EvolutionAPI:
     def _get(self, path: str) -> Dict:
         url = f"{self.base_url}{path}"
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=self.timeout)
+            resp = httpx.get(url, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
         except Exception as e:
@@ -47,7 +47,7 @@ class EvolutionAPI:
     def _post(self, path: str, payload: Dict = None) -> Dict:
         url = f"{self.base_url}{path}"
         try:
-            resp = requests.post(
+            resp = httpx.post(
                 url,
                 headers=self._headers(),
                 json=payload or {},
@@ -67,7 +67,7 @@ class EvolutionAPI:
     def _delete(self, path: str) -> Dict:
         url = f"{self.base_url}{path}"
         try:
-            resp = requests.delete(url, headers=self._headers(), timeout=self.timeout)
+            resp = httpx.delete(url, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
             return {'success': True, 'data': resp.json()}
         except Exception as e:
