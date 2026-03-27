@@ -151,6 +151,8 @@ class EvolutionAPI:
         يحاول جلب QR Code، وإذا لم يجد الـ instance ينشئه أولاً.
         يعيد base64 string أو None.
         """
+        import time
+
         # أولاً: جرب جلب الـ QR مباشرة
         result = self.get_qrcode()
         if result.get('success'):
@@ -158,21 +160,27 @@ class EvolutionAPI:
             if qr:
                 return qr
 
-        # ثانياً: إذا 404 أو instance غير موجود — أنشئه
-        status_code = result.get('status', 0)
-        if status_code in (404, 400) or not result.get('success'):
-            logger.info("Instance not found, creating...")
-            create_result = self.create_instance()
-            if create_result.get('success'):
-                qr = self.extract_qr_base64(create_result['data'])
-                if qr:
-                    return qr
-                # أحياناً لا يأتي QR مع الإنشاء — نجلبه بعدها
-                import time
-                time.sleep(2)
-                result2 = self.get_qrcode()
-                if result2.get('success'):
-                    return self.extract_qr_base64(result2['data'])
+        # ثانياً: أي فشل (404, 400, connection error) — حاول إنشاء الـ instance
+        logger.info(f"QR fetch failed ({result.get('error', '')}), attempting to create instance...")
+        create_result = self.create_instance()
+
+        if create_result.get('success'):
+            qr = self.extract_qr_base64(create_result['data'])
+            if qr:
+                return qr
+            # أحياناً لا يأتي QR مع الإنشاء — انتظر ثم اجلبه
+            time.sleep(3)
+            result2 = self.get_qrcode()
+            if result2.get('success'):
+                return self.extract_qr_base64(result2['data'])
+
+        elif '422' in str(create_result.get('error', '')) or 'already' in str(create_result.get('body', '')).lower():
+            # الـ instance موجود مسبقاً — فقط اجلب الـ QR
+            logger.info("Instance already exists, fetching QR...")
+            time.sleep(1)
+            result3 = self.get_qrcode()
+            if result3.get('success'):
+                return self.extract_qr_base64(result3['data'])
 
         return None
 
