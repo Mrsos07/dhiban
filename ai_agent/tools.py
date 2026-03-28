@@ -415,14 +415,14 @@ def format_supplier_response(supplier: Dict) -> str:
     response += f"   ⭐ {supplier.get('rating', 0)}/5\n"
     
     if supplier.get('phone'):
-        response += f"   � {supplier['phone']}\n"
+        response += f"   📞 {supplier['phone']}\n"
     
     address = supplier.get('address', '')
     if not address:
         loc = supplier.get('location', {})
         address = loc.get('address', '') if isinstance(loc, dict) else ''
     if address:
-        response += f"   � {address}\n"
+        response += f"   📍 {address}\n"
     
     if supplier.get('is_partner'):
         response += "   ✅ شريك معتمد\n"
