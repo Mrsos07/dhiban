@@ -211,12 +211,24 @@ class DhibanAgent:
             # إضافة رسالة المستخدم الحالية
             messages.append({"role": "user", "content": user_message})
             
+            # تحديد إذا كانت الرسالة تحتاج بحث - إجبار على استخدام الأداة
+            search_keywords = [
+                'مطعم', 'كافيه', 'قهوة', 'صيدلية', 'مستشفى', 'عيادة', 'كهربائي',
+                'سباك', 'نجار', 'دهان', 'مكيف', 'محل', 'بقالة', 'سوبر', 'بنك',
+                'فندق', 'مول', 'حلاق', 'مغسلة', 'ورشة', 'مندي', 'شاورما',
+                'برغر', 'بيتزا', 'حلويات', 'خبز', 'دجاج', 'لحم', 'سمك',
+                'أبي', 'ابي', 'أبغى', 'ابغى', 'أريد', 'بغيت', 'وين', 'فين',
+                'دلني', 'ساعدني', 'قريب', 'أقرب', 'زين', 'جيد', 'مميز'
+            ]
+            is_search = any(kw in user_message for kw in search_keywords)
+            tool_choice = {"type": "function", "function": {"name": "combined_search"}} if is_search else "auto"
+            
             # إرسال لـ OpenAI مع الأدوات
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=TOOLS,
-                tool_choice="auto",
+                tool_choice=tool_choice,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
@@ -229,23 +241,26 @@ class DhibanAgent:
                 tool_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
                 
-                logger.info(f"Tool call: {tool_name} | args: {arguments}")
+                logger.info(f"[AGENT] Tool call: {tool_name} | args: {arguments}")
                 result = self._execute_tool(tool_name, arguments)
+                logger.info(f"[AGENT] Tool result length: {len(result)} | preview: {repr(result[:200])}")
                 
                 # إذا لم نجد في الموردين ابحث في Google تلقائياً
                 if tool_name == "search_suppliers" and "لم أجد" in result:
                     q = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
+                    logger.info(f"[AGENT] No DB results, falling back to Google: {q}")
                     google_result = search_google_places(query=q, limit=3)
                     if google_result:
                         result = format_google_results(google_result, q)
+                        logger.info(f"[AGENT] Google result: {repr(result[:200])}")
                 
-                # إرجاع نتيجة الأداة مباشرة بدون إعادة صياغة من OpenAI
-                # هذا يضمن الحفاظ على رقم الجوال ورابط الخريطة كما هو
+                logger.info(f"[AGENT] Final result to user: {repr(result[:300])}")
                 self._save_message(user_id, 'bot', result)
                 return result
             
             # رد مباشر من OpenAI بدون أدوات
             bot_response = assistant_message.content
+            logger.info(f"[AGENT] Direct OpenAI response (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
                 bot_response = "وش تبي بالضبط؟ وضح أكثر 🐺"
             
@@ -283,11 +298,24 @@ class DhibanAgent:
             
             messages.append({"role": "user", "content": user_message})
             
+            # إجبار على استخدام الأداة عند وجود طلب بحث
+            search_keywords = [
+                'مطعم', 'كافيه', 'قهوة', 'صيدلية', 'مستشفى', 'عيادة', 'كهربائي',
+                'سباك', 'نجار', 'دهان', 'مكيف', 'محل', 'بقالة', 'سوبر', 'بنك',
+                'فندق', 'مول', 'حلاق', 'مغسلة', 'ورشة', 'مندي', 'شاورما',
+                'برغر', 'بيتزا', 'حلويات', 'خبز', 'دجاج', 'لحم', 'سمك',
+                'أبي', 'ابي', 'أبغى', 'ابغى', 'أريد', 'بغيت', 'وين', 'فين',
+                'دلني', 'ساعدني', 'قريب', 'أقرب', 'زين', 'جيد', 'مميز'
+            ]
+            is_search = any(kw in user_message for kw in search_keywords)
+            tool_choice = {"type": "function", "function": {"name": "combined_search"}} if is_search else "auto"
+            logger.info(f"[AGENT-WA] is_search={is_search} | tool_choice={tool_choice}")
+            
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=TOOLS,
-                tool_choice="auto",
+                tool_choice=tool_choice,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
@@ -299,19 +327,22 @@ class DhibanAgent:
                 tool_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
                 
-                logger.info(f"Tool call: {tool_name} | args: {arguments}")
+                logger.info(f"[AGENT-WA] Tool call: {tool_name} | args: {arguments}")
                 result = self._execute_tool(tool_name, arguments)
+                logger.info(f"[AGENT-WA] Tool result length: {len(result)} | preview: {repr(result[:200])}")
                 
                 if tool_name == "search_suppliers" and "لم أجد" in result:
                     q = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
+                    logger.info(f"[AGENT-WA] No DB results, falling back to Google: {q}")
                     google_result = search_google_places(query=q, limit=3)
                     if google_result:
                         result = format_google_results(google_result, q)
                 
-                # إرجاع نتيجة الأداة مباشرة بدون إعادة صياغة
+                logger.info(f"[AGENT-WA] Final result to WhatsApp: {repr(result[:300])}")
                 return result
             
             bot_response = assistant_message.content
+            logger.info(f"[AGENT-WA] Direct OpenAI (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
                 bot_response = "وش تبي بالضبط؟ وضح أكثر"
             return bot_response
