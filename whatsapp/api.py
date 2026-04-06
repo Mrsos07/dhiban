@@ -234,6 +234,48 @@ class WhatsAppAPI:
             "message_id": message_id
         }
         return self._make_request("messages", payload)
+    
+    def get_media_url(self, media_id: str) -> Optional[str]:
+        """الحصول على رابط تحميل الوسائط من Meta API"""
+        url = f"{self.api_url}/{media_id}"
+        try:
+            response = httpx.get(
+                url,
+                headers=self._get_headers(),
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get('url')
+        except Exception as e:
+            logger.error(f"Failed to get media URL for {media_id}: {e}")
+            return None
+    
+    def download_media(self, media_url: str) -> Optional[bytes]:
+        """تحميل ملف الوسائط من الرابط المباشر"""
+        try:
+            response = httpx.get(
+                media_url,
+                headers={'Authorization': f'Bearer {self.access_token}'},
+                timeout=60,
+                follow_redirects=True
+            )
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            logger.error(f"Failed to download media: {e}")
+            return None
+    
+    def get_media_as_base64(self, media_id: str) -> Optional[str]:
+        """تحميل الوسائط وتحويلها إلى base64"""
+        import base64
+        media_url = self.get_media_url(media_id)
+        if not media_url:
+            return None
+        content = self.download_media(media_url)
+        if not content:
+            return None
+        return base64.b64encode(content).decode('utf-8')
 
 
 whatsapp_api = WhatsAppAPI()

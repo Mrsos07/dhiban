@@ -247,6 +247,30 @@ class EvolutionAPI:
         }
         return self._post(f'/message/sendMedia/{self.instance_name}', payload)
 
+    # ─── Media ───────────────────────────────────────────────────────────────────
+
+    def download_media_base64(self, message_key_id: str) -> Optional[str]:
+        """
+        تحميل وسائط من Evolution API وإرجاعها كـ base64.
+        يستخدم endpoint: GET /chat/getBase64FromMediaMessage/{instance}
+        """
+        payload = {
+            'key': {
+                'id': message_key_id,
+            },
+            'convertToMp4': False,
+        }
+        result = self._post(
+            f'/chat/getBase64FromMediaMessage/{self.instance_name}',
+            payload
+        )
+        if result.get('success'):
+            data = result.get('data', {})
+            # Evolution API يعيد: { "base64": "...", "mimetype": "..." }
+            return data.get('base64', '')
+        logger.error(f"Failed to download media base64: {result.get('error')}")
+        return None
+
     # ─── Webhook Setup ──────────────────────────────────────────────────────────
 
     def set_webhook(self, webhook_url: str) -> Dict:

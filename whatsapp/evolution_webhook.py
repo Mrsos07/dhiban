@@ -30,6 +30,50 @@ def _extract_text_from_message(message: dict) -> str:
     )
 
 
+def _detect_media_type(message: dict) -> dict:
+    """
+    اكتشاف نوع الوسائط في الرسالة (صورة، صوت، فيديو).
+    يعيد dict مع media_type و mime_type و caption أو None.
+    """
+    # صورة
+    if 'imageMessage' in message:
+        img = message['imageMessage']
+        return {
+            'media_type': 'image',
+            'mime_type': img.get('mimetype', 'image/jpeg'),
+            'caption': img.get('caption', ''),
+            'url': img.get('url', ''),
+            'base64': img.get('base64', ''),
+        }
+    
+    # صوت / رسالة صوتية
+    if 'audioMessage' in message:
+        aud = message['audioMessage']
+        return {
+            'media_type': 'audio',
+            'mime_type': aud.get('mimetype', 'audio/ogg; codecs=opus'),
+            'url': aud.get('url', ''),
+            'base64': aud.get('base64', ''),
+            'ptt': aud.get('ptt', True),  # push-to-talk (voice note)
+        }
+    
+    # فيديو (نعلم المستخدم أننا لا ندعمه حالياً)
+    if 'videoMessage' in message:
+        return {
+            'media_type': 'video',
+            'mime_type': message['videoMessage'].get('mimetype', 'video/mp4'),
+        }
+    
+    # مستند (PDF, etc)
+    if 'documentMessage' in message:
+        return {
+            'media_type': 'document',
+            'mime_type': message['documentMessage'].get('mimetype', ''),
+        }
+    
+    return None
+
+
 def extract_evolution_message(data: dict) -> dict:
     """
     استخراج بيانات الرسالة من payload الخاص بـ Evolution API latest.
@@ -80,20 +124,39 @@ def extract_evolution_message(data: dict) -> dict:
         message_obj = raw.get('message', {})
         push_name = raw.get('pushName', '') or raw.get('notifyName', '')
         text = _extract_text_from_message(message_obj)
+        message_id = key.get('id', '')
 
-        # تجاهل الرسائل غير النصية (صور، صوت، فيديو)
-        if not text:
-            logger.debug(f"Non-text message from {phone_number}, skipping")
-            return None
+        # اكتشاف الوسائط (صور، صوت)
+        media_info = _detect_media_type(message_obj)
 
-        return {
-            'event': 'message',
-            'phone_number': phone_number,
-            'text': text,
-            'contact_name': push_name,
-            'message_id': key.get('id', ''),
-            'instance': instance,
-        }
+        # رسالة نصية عادية
+        if text:
+            return {
+                'event': 'message',
+                'phone_number': phone_number,
+                'text': text,
+                'contact_name': push_name,
+                'message_id': message_id,
+                'instance': instance,
+                'media': None,
+            }
+
+        # رسالة وسائط (صورة أو صوت)
+        if media_info:
+            logger.info(f"Media message from {phone_number}: type={media_info['media_type']}")
+            return {
+                'event': 'message',
+                'phone_number': phone_number,
+                'text': media_info.get('caption', ''),
+                'contact_name': push_name,
+                'message_id': message_id,
+                'instance': instance,
+                'media': media_info,
+            }
+
+        # رسالة غير مدعومة
+        logger.debug(f"Unsupported message type from {phone_number}, skipping")
+        return None
 
     except Exception as e:
         logger.error(f"Evolution webhook extract error: {e}", exc_info=True)
@@ -147,35 +210,112 @@ def build_chat_history(conversation: Conversation) -> list:
 def process_evolution_message(msg: dict):
     """
     معالجة رسالة واردة وإرسال الرد عبر الوكيل.
-    - يحفظ رسالة المستخدم في المحادثة
-    - يمرر تاريخ المحادثة للوكيل (ذاكرة)
-    - يحفظ رد الوكيل في نفس المحادثة
+    يدعم: نصوص، صور، رسائل صوتية
     """
     phone_number = msg.get('phone_number')
     text = msg.get('text', '').strip()
     contact_name = msg.get('contact_name', '')
+    media = msg.get('media')
+    message_id = msg.get('message_id', '')
 
-    if not phone_number or not text:
+    if not phone_number:
         return
 
-    logger.info(f"Processing message from {phone_number}: {text[:50]}")
+    # يجب أن يكون هناك نص أو وسائط
+    if not text and not media:
+        return
+
+    logger.info(f"Processing message from {phone_number}: text={text[:50] if text else '[media]'}, media={media.get('media_type') if media else 'none'}")
 
     user = get_or_create_user(phone_number, contact_name)
     conversation = get_or_create_conversation(user)
 
-    # حفظ رسالة المستخدم في المحادثة
-    conversation.add_message('user', text)
-
-    # بناء تاريخ المحادثة للذاكرة (بدون الرسالة الحالية لتجنب التكرار)
+    # بناء تاريخ المحادثة للذاكرة
     history = build_chat_history(conversation)
-    # إزالة آخر رسالة (التي أضفناها للتو) من الـ history الممرر للوكيل
-    if history and history[-1].get('role') == 'user':
-        history = history[:-1]
 
     try:
         from ai_agent.agent import dhiban_agent
-        # process_message_with_history يضمن: ذاكرة كاملة + جميع Tools
-        response = dhiban_agent.process_message_with_history(text, chat_history=history)
+
+        # ── معالجة الصور ──
+        if media and media.get('media_type') == 'image':
+            logger.info(f"[EVOLUTION] Image message from {phone_number}")
+            conversation.add_message('user', media.get('caption', '') or '📸 [صورة]')
+
+            # إزالة آخر رسالة لتجنب التكرار
+            history_clean = history  # التاريخ قبل إضافة الرسالة الحالية
+
+            # محاولة تحميل الصورة كـ base64 عبر Evolution API
+            image_base64 = None
+            image_url = media.get('url', '')
+
+            if message_id:
+                image_base64 = evolution_api.download_media_base64(message_id)
+
+            if image_base64:
+                response = dhiban_agent.process_image_message(
+                    user_id=phone_number,
+                    image_base64=image_base64,
+                    mime_type=media.get('mime_type', 'image/jpeg'),
+                    caption=media.get('caption', ''),
+                    chat_history=history_clean
+                )
+            elif image_url:
+                response = dhiban_agent.process_image_message(
+                    user_id=phone_number,
+                    image_url=image_url,
+                    mime_type=media.get('mime_type', 'image/jpeg'),
+                    caption=media.get('caption', ''),
+                    chat_history=history_clean
+                )
+            else:
+                response = "ما قدرت أحمّل الصورة 😕\nجرب ترسلها مرة ثانية!"
+
+        # ── معالجة الصوت ──
+        elif media and media.get('media_type') == 'audio':
+            logger.info(f"[EVOLUTION] Audio message from {phone_number}")
+            conversation.add_message('user', '🎤 [رسالة صوتية]')
+
+            history_clean = history
+
+            # تحميل الصوت كـ base64
+            audio_base64 = None
+            audio_url = media.get('url', '')
+
+            if message_id:
+                audio_base64 = evolution_api.download_media_base64(message_id)
+
+            if audio_base64:
+                response = dhiban_agent.process_voice_message(
+                    user_id=phone_number,
+                    audio_base64=audio_base64,
+                    mime_type=media.get('mime_type', 'audio/ogg'),
+                    chat_history=history_clean
+                )
+            elif audio_url:
+                response = dhiban_agent.process_voice_message(
+                    user_id=phone_number,
+                    audio_url=audio_url,
+                    mime_type=media.get('mime_type', 'audio/ogg'),
+                    chat_history=history_clean
+                )
+            else:
+                response = "ما قدرت أحمّل الرسالة الصوتية 😕\nجرب ترسلها مرة ثانية أو اكتب لي!"
+
+        # ── فيديو ومستندات (غير مدعومة حالياً) ──
+        elif media and media.get('media_type') in ('video', 'document'):
+            conversation.add_message('user', f"📎 [{media['media_type']}]")
+            response = "حالياً أقدر أفهم الصور والرسائل الصوتية والنصوص 🐺\nأرسل لي صورة المنتج أو اكتب لي وش تبي!"
+
+        # ── رسالة نصية عادية ──
+        elif text:
+            conversation.add_message('user', text)
+            # إزالة آخر رسالة من الـ history
+            if history and history[-1].get('role') == 'user':
+                history = history[:-1]
+            response = dhiban_agent.process_message_with_history(text, chat_history=history)
+
+        else:
+            response = "ما فهمت رسالتك 😕 اكتب لي أو أرسل صورة!"
 
         conversation.intent_detected = 'search'
         conversation.save(update_fields=['intent_detected'])
@@ -190,7 +330,6 @@ def process_evolution_message(msg: dict):
             logger.info(f"Reply sent to {phone_number}")
         else:
             logger.error(f"Failed to send reply to {phone_number}: {result.get('error')}")
-        # حفظ رد الوكيل دائماً حتى لو فشل الإرسال (للسجل)
         conversation.add_message('bot', response)
 
 

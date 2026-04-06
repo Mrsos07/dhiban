@@ -11,7 +11,13 @@ from .config import OPENAI_API_KEY, OPENAI_MODEL
 from .prompts import DHIBAN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from .tools import (
     search_suppliers, search_google_places, combined_search,
-    get_categories, format_search_results, format_google_results, TOOLS
+    get_categories, format_search_results, format_google_results,
+    build_daily_plan, build_maps_url, TOOLS
+)
+from .media import (
+    analyze_image_from_url, analyze_image_from_base64,
+    transcribe_audio_from_url, transcribe_audio_from_base64,
+    format_image_analysis_response
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +172,14 @@ class DhibanAgent:
                     return f"التصنيفات المتاحة:\n{cat_list}"
                 return "لا توجد تصنيفات متاحة حاليا"
             
+            elif tool_name == "build_daily_plan":
+                result = build_daily_plan(
+                    activities=arguments.get("activities"),
+                    plan_type=arguments.get("plan_type", "daily"),
+                    preferences=arguments.get("preferences")
+                )
+                return result
+            
             else:
                 return f"أداة غير معروفة: {tool_name}"
         
@@ -220,8 +234,29 @@ class DhibanAgent:
                 'أبي', 'ابي', 'أبغى', 'ابغى', 'أريد', 'بغيت', 'وين', 'فين',
                 'دلني', 'ساعدني', 'قريب', 'أقرب', 'زين', 'جيد', 'مميز'
             ]
+            # كلمات سياحية/تخطيط يومي - تستخدم build_daily_plan
+            tourism_keywords = [
+                'خطة', 'برنامج', 'جدول', 'رتب لي', 'رتبلي', 'خطط لي', 'خططلي',
+                'وش اسوي', 'ايش اسوي', 'وش نسوي', 'اقترح', 'اقترحلي',
+                'ودي اطلع', 'ابي اطلع', 'وين اروح', 'وين نروح',
+                'طلعة', 'خروجة', 'سهرة', 'تمشية', 'اتمشى',
+                'ملان', 'ملل', 'زهقان', 'طفشان', 'اتسلى',
+                'استكشف', 'سياحة', 'معالم', 'تراث',
+                'عائلة', 'عوائل', 'ربع', 'شباب', 'اصحاب',
+                'ويكند', 'عطلة', 'اجازة', 'الليلة', 'الصباح',
+                'اطفال', 'عيال', 'ملاهي', 'رومانسي',
+                'ودي اتعشى', 'ودي اتغدى', 'ودي اتمشى',
+                'انصحني', 'تنصحني', 'فكرة', 'افكار',
+            ]
             is_search = any(kw in user_message for kw in search_keywords)
-            tool_choice = {"type": "function", "function": {"name": "combined_search"}} if is_search else "auto"
+            is_tourism = any(kw in user_message for kw in tourism_keywords)
+            
+            if is_tourism:
+                tool_choice = {"type": "function", "function": {"name": "build_daily_plan"}}
+            elif is_search:
+                tool_choice = {"type": "function", "function": {"name": "combined_search"}}
+            else:
+                tool_choice = "auto"
             
             # إرسال لـ OpenAI مع الأدوات
             response = self.client.chat.completions.create(
@@ -307,9 +342,30 @@ class DhibanAgent:
                 'أبي', 'ابي', 'أبغى', 'ابغى', 'أريد', 'بغيت', 'وين', 'فين',
                 'دلني', 'ساعدني', 'قريب', 'أقرب', 'زين', 'جيد', 'مميز'
             ]
+            # كلمات سياحية/تخطيط يومي
+            tourism_keywords = [
+                'خطة', 'برنامج', 'جدول', 'رتب لي', 'رتبلي', 'خطط لي', 'خططلي',
+                'وش اسوي', 'ايش اسوي', 'وش نسوي', 'اقترح', 'اقترحلي',
+                'ودي اطلع', 'ابي اطلع', 'وين اروح', 'وين نروح',
+                'طلعة', 'خروجة', 'سهرة', 'تمشية', 'اتمشى',
+                'ملان', 'ملل', 'زهقان', 'طفشان', 'اتسلى',
+                'استكشف', 'سياحة', 'معالم', 'تراث',
+                'عائلة', 'عوائل', 'ربع', 'شباب', 'اصحاب',
+                'ويكند', 'عطلة', 'اجازة', 'الليلة', 'الصباح',
+                'اطفال', 'عيال', 'ملاهي', 'رومانسي',
+                'ودي اتعشى', 'ودي اتغدى', 'ودي اتمشى',
+                'انصحني', 'تنصحني', 'فكرة', 'افكار',
+            ]
             is_search = any(kw in user_message for kw in search_keywords)
-            tool_choice = {"type": "function", "function": {"name": "combined_search"}} if is_search else "auto"
-            logger.info(f"[AGENT-WA] is_search={is_search} | tool_choice={tool_choice}")
+            is_tourism = any(kw in user_message for kw in tourism_keywords)
+            
+            if is_tourism:
+                tool_choice = {"type": "function", "function": {"name": "build_daily_plan"}}
+            elif is_search:
+                tool_choice = {"type": "function", "function": {"name": "combined_search"}}
+            else:
+                tool_choice = "auto"
+            logger.info(f"[AGENT-WA] is_search={is_search} | is_tourism={is_tourism} | tool_choice={tool_choice}")
             
             response = self.client.chat.completions.create(
                 model=model,
@@ -351,6 +407,145 @@ class DhibanAgent:
             logger.error(f"Agent error: {e}", exc_info=True)
             return "صار خطأ، جرب مرة ثانية"
 
+    def process_image_message(
+        self,
+        user_id: str = None,
+        image_url: str = None,
+        image_base64: str = None,
+        mime_type: str = "image/jpeg",
+        caption: str = "",
+        chat_history: List[Dict] = None
+    ) -> str:
+        """
+        معالجة صورة من المستخدم:
+        1. تحليل الصورة بـ OpenAI Vision للتعرف على المنتج
+        2. البحث عن أقرب مكان يبيعه في عنيزة عبر Google Maps
+        3. إرسال النتيجة مع رابط الموقع
+        """
+        try:
+            logger.info(f"[AGENT] Processing image from user {user_id}")
+            
+            # حفظ رسالة المستخدم
+            img_text = caption if caption else "📸 [صورة]"
+            self._save_message(user_id, 'user', img_text)
+            
+            # تحليل الصورة
+            analysis = None
+            if image_url:
+                analysis = analyze_image_from_url(image_url)
+            elif image_base64:
+                analysis = analyze_image_from_base64(image_base64, mime_type)
+            
+            if not analysis:
+                response = "ما قدرت أحلل الصورة 😕\nجرب ترسل صورة أوضح أو اكتب لي وش تبي!"
+                self._save_message(user_id, 'bot', response)
+                return response
+            
+            # إذا ليس منتج
+            if analysis.get('is_product') is False:
+                desc = analysis.get('description', 'صورة')
+                response = f"📸 شفت الصورة! 🐺\n{desc}\n\nإذا تبي تسألني عن منتج، أرسل لي صورته!"
+                self._save_message(user_id, 'bot', response)
+                return response
+            
+            # بناء الرد الأولي
+            product_ar = analysis.get('product_name_ar', 'منتج')
+            category = analysis.get('category', '')
+            description = analysis.get('description', '')
+            search_query = analysis.get('search_query', '')
+            place_type = analysis.get('google_place_type', '')
+            
+            response = f"📸 تعرفت على الصورة! 🐺\n\n"
+            response += f"📦 *{product_ar}*\n"
+            if description:
+                response += f"📝 {description}\n"
+            
+            # البحث عن أقرب مكان يبيع المنتج
+            if search_query or category:
+                query = search_query or f"{category} في عنيزة"
+                logger.info(f"[AGENT] Searching for product store: {query}")
+                
+                places = search_google_places(
+                    query=query,
+                    place_type=place_type if place_type else None,
+                    limit=3,
+                    save_results=True
+                )
+                
+                if places:
+                    response += f"\n🏪 أقرب مكان تلقاه فيه في عنيزة:\n\n"
+                    for i, place in enumerate(places[:2], 1):
+                        name = place.get('name', '')
+                        rating = place.get('rating', 0)
+                        address = place.get('address', '')
+                        maps_url = build_maps_url(place)
+                        
+                        response += f"*{i}. {name}*\n"
+                        if rating:
+                            response += f"   ⭐ {rating}/5\n"
+                        if address:
+                            response += f"   📍 {address}\n"
+                        if maps_url:
+                            response += f"   🗺️ {maps_url}\n"
+                        response += "\n"
+                else:
+                    response += f"\n🏪 تلقاه في: *{category}*\n"
+                    response += "ما لقيت مكان محدد في Google Maps، جرب تبحث عنه يدوياً 😊\n"
+            
+            response += "تبي شي ثاني؟ 🐺"
+            
+            self._save_message(user_id, 'bot', response)
+            return response
+            
+        except Exception as e:
+            logger.error(f"[AGENT] Image processing error: {e}", exc_info=True)
+            error_response = "صار خطأ في تحليل الصورة 😕 جرب مرة ثانية!"
+            self._save_message(user_id, 'bot', error_response)
+            return error_response
+    
+    def process_voice_message(
+        self,
+        user_id: str = None,
+        audio_url: str = None,
+        audio_base64: str = None,
+        mime_type: str = "audio/ogg",
+        download_headers: dict = None,
+        chat_history: List[Dict] = None
+    ) -> str:
+        """
+        معالجة رسالة صوتية:
+        1. تحويل الصوت لنص بـ Whisper
+        2. معالجة النص كرسالة عادية
+        """
+        try:
+            logger.info(f"[AGENT] Processing voice message from user {user_id}")
+            
+            # تحويل الصوت لنص
+            text = None
+            if audio_url:
+                text = transcribe_audio_from_url(audio_url, headers=download_headers)
+            elif audio_base64:
+                text = transcribe_audio_from_base64(audio_base64, mime_type)
+            
+            if not text:
+                response = "ما قدرت أفهم الرسالة الصوتية 😕\nجرب ترسل صوت أوضح أو اكتب لي!"
+                self._save_message(user_id, 'bot', response)
+                return response
+            
+            logger.info(f"[AGENT] Voice transcription: {text[:100]}")
+            
+            # معالجة النص كرسالة عادية
+            if chat_history is not None:
+                return self.process_message_with_history(text, chat_history)
+            else:
+                return self.process_message(text, user_id)
+            
+        except Exception as e:
+            logger.error(f"[AGENT] Voice processing error: {e}", exc_info=True)
+            error_response = "صار خطأ في تحليل الصوت 😕 جرب مرة ثانية!"
+            self._save_message(user_id, 'bot', error_response)
+            return error_response
+    
     def get_greeting(self) -> str:
         """رسالة الترحيب - تُقرأ من إعدادات قاعدة البيانات"""
         db_settings = self._get_settings()
@@ -358,14 +553,15 @@ class DhibanAgent:
             return db_settings.welcome_message
         
         return """هلا والله! 🐺
-أنا ذيبان، دليلك في عنيزة.
+أنا ذيبان، دليلك الشخصي في عنيزة.
 
 وش تبي؟
+�️ خطط يومية واقتراحات طلعات
+🍽️ مطاعم، كافيهات، حلويات
 🔧 كهربائي، سباك، نجار
-🍽️ مطاعم، كافيهات
 🏥 صيدليات، مستشفيات
 
-قل لي وابشر!"""
+قل "وش اسوي اليوم" وابشر بخطة كاملة! 📋"""
 
 
 # إنشاء instance واحد للوكيل

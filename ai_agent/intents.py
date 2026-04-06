@@ -10,6 +10,24 @@ import re
 
 class IntentType(Enum):
     """أنواع النوايا"""
+    # ═══ نوايا سياحية وتخطيط يومي ═══
+    DAILY_PLAN = "daily_plan"              # طلب خطة يومية كاملة
+    ACTIVITY_SUGGESTION = "activity_suggestion"  # اقتراح نشاط (وش اسوي)
+    MOOD_BASED = "mood_based"              # طلب بناء على المزاج (ملان، ابي اتسلى)
+    EXPLORE = "explore"                    # استكشاف المدينة / وش فيه
+    OUTING_FOOD = "outing_food"            # خروجة أكل (ودي اطلع اتعشى/اتغدى)
+    OUTING_WALK = "outing_walk"            # خروجة تمشية (ودي اتمشى)
+    OUTING_COFFEE = "outing_coffee"        # خروجة قهوة (ودي اشرب قهوة بمكان حلو)
+    OUTING_FAMILY = "outing_family"        # خروجة عائلية
+    OUTING_FRIENDS = "outing_friends"      # طلعة مع الربع
+    OUTING_ROMANTIC = "outing_romantic"    # خروجة رومانسية
+    OUTING_KIDS = "outing_kids"            # أماكن أطفال
+    WEEKEND_PLAN = "weekend_plan"          # خطة نهاية الأسبوع
+    EVENING_PLAN = "evening_plan"          # خطة مسائية
+    MORNING_PLAN = "morning_plan"          # خطة صباحية
+    PREFERENCE_RESPONSE = "preference_response"  # رد على سؤال التفضيلات
+    
+    # ═══ نوايا البحث والخدمات ═══
     HUNGRY = "hungry"                      # جوعان - يحتاج سؤال عن نوع الأكل
     SEARCH_FOOD = "search_food"            # البحث عن مطعم/أكل محدد
     SEARCH_SERVICE = "search_service"      # البحث عن خدمة (كهربائي سباك)
@@ -31,6 +49,8 @@ class Intent:
     entities: Dict
     original_text: str
     use_google: bool = False  # هل يجب استخدام Google Maps
+    needs_followup: bool = False  # هل يحتاج سؤال متابعة لمعرفة التفضيلات
+    plan_type: str = ''  # نوع الخطة المطلوبة (daily/evening/morning/weekend)
 
 
 # الكلمات القصيمية والعربية لكل نية
@@ -40,15 +60,236 @@ INTENT_PATTERNS = {
         'patterns': [r'^هلا+$', r'^السلام عليكم', r'^مرحبا?$'],
         'priority': 10
     },
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🗺️ نوايا سياحية وتخطيط يومي (أولوية عالية جداً)
+    # ═══════════════════════════════════════════════════════════════
+    IntentType.DAILY_PLAN: {
+        'keywords': [
+            'خطة', 'خطتي', 'برنامج', 'برنامجي', 'جدول', 'جدولي',
+            'رتب لي', 'رتبلي', 'نظم لي', 'نظملي', 'خطط لي', 'خططلي',
+            'جدول لي', 'جدولي', 'سو لي خطة', 'سولي خطة',
+            'سوي لي جدول', 'سولي جدول', 'حط لي برنامج', 'حطلي برنامج',
+            'يومي', 'يومية', 'ليوم', 'اليوم', 'خطة يوم', 'خطة يومية',
+        ],
+        'patterns': [
+            r'(رتب|نظم|خطط|سو|سوي|حط).*(لي|لنا).*(خطة|برنامج|جدول)',
+            r'(خطة|برنامج|جدول).*(اليوم|يوم|يومي)',
+            r'(ابي|ابغى|اريد).*(خطة|برنامج|جدول)',
+            r'وش.*(اسوي|نسوي).*(اليوم|يوم|الويكند|نهاية الاسبوع)',
+        ],
+        'priority': 12
+    },
+    IntentType.ACTIVITY_SUGGESTION: {
+        'keywords': [
+            'وش اسوي', 'ايش اسوي', 'وش نسوي', 'ايش نسوي',
+            'اقتراح', 'اقتراحات', 'اقترح', 'اقترحلي', 'اقترح لي',
+            'وش تنصحني', 'وش تنصح', 'انصحني', 'نصيحة', 'نصيحتك',
+            'ودي اطلع', 'ابي اطلع', 'ابغى اطلع', 'نبي نطلع',
+            'وين اروح', 'وين نروح', 'فين اروح',
+            'دلني', 'دلنا', 'عطني فكرة', 'عطني افكار',
+        ],
+        'patterns': [
+            r'(وش|ايش|شو).*(اسوي|نسوي|اروح|نروح)',
+            r'(اقترح|انصح).*(لي|لنا|علي|علينا)',
+            r'(ودي|ابي|ابغى|نبي).*(اطلع|اروح|نطلع|نروح)',
+            r'(وين|فين).*(اروح|نروح|اطلع|نطلع)',
+            r'(عطني|عطنا).*(فكرة|افكار|اقتراح)',
+        ],
+        'priority': 11
+    },
+    IntentType.MOOD_BASED: {
+        'keywords': [
+            'ملان', 'ملل', 'مليت', 'زهقان', 'زهقت', 'طفشان', 'طفشت',
+            'ابي اتسلى', 'ابي ترفيه', 'ابي شي حلو', 'ابي شي مختلف',
+            'اتسلى', 'ترفيه', 'تغيير جو', 'كسر روتين', 'كاسر ملل',
+            'مبسوط', 'فرحان', 'نشيط', 'حماس', 'متحمس', 'حيل نشيط',
+            'تعبان', 'مرهق', 'ابي راحة', 'ابي استرخي', 'ابي هدوء',
+            'رايق', 'مزاجي', 'ابي مكان هادي', 'ابي مكان حلو',
+        ],
+        'patterns': [
+            r'^(انا\s+)?(ملان|ملل|زهقان|طفشان|مليت)',
+            r'(ابي|ابغى).*(اتسلى|ترفيه|شي حلو|شي مختلف|راحة|استرخي)',
+            r'(تغيير|كسر).*(جو|روتين|ملل)',
+        ],
+        'priority': 11
+    },
+    IntentType.EXPLORE: {
+        'keywords': [
+            'استكشف', 'استكشاف', 'اكتشف', 'تعرف', 'معالم', 'اماكن حلوة',
+            'وش فيه', 'ايش فيه', 'وش عندكم', 'وش يميز',
+            'سياحة', 'سياحي', 'زيارة', 'اماكن سياحية',
+            'اثار', 'تاريخ', 'تراث', 'قديم',
+            'اماكن', 'مناطق', 'حارات', 'احياء',
+        ],
+        'patterns': [
+            r'(وش|ايش).*(فيه|عندكم|يميز).*(عنيزة)?',
+            r'(اماكن|مناطق).*(حلوة|سياحية|تراثية|قديمة)',
+            r'(ابي|ابغى).*(استكشف|اكتشف|ازور|اتعرف)',
+        ],
+        'priority': 11
+    },
+    IntentType.OUTING_FOOD: {
+        'keywords': [
+            'ودي اتعشى', 'ودي اتغدى', 'ودي افطر', 'نتعشى', 'نتغدى', 'نفطر',
+            'ابي اتعشى', 'ابي اتغدى', 'ابي افطر',
+            'مكان اكل حلو', 'مكان ناكل فيه', 'نبي ناكل',
+            'طلعة اكل', 'خروجة اكل', 'سهرة اكل',
+            'عزيمة', 'ضيوف', 'عندي ناس',
+        ],
+        'patterns': [
+            r'(ودي|ابي|ابغى|نبي).*(اتعشى|اتغدى|افطر|ناكل|نتعشى|نتغدى)',
+            r'(طلعة|خروجة|سهرة).*(اكل|عشاء|غداء)',
+            r'(مكان|محل).*(ناكل|اكل|حلو).*(فيه)?',
+        ],
+        'priority': 10
+    },
+    IntentType.OUTING_WALK: {
+        'keywords': [
+            'اتمشى', 'تمشية', 'تمشي', 'نتمشى', 'مشوار',
+            'ودي اتمشى', 'ابي اتمشى', 'نطلع نتمشى',
+            'ممشى', 'كورنيش', 'حديقة', 'منتزه', 'بارك',
+            'هواء', 'طبيعة', 'خضار', 'اخضر',
+        ],
+        'patterns': [
+            r'(ودي|ابي|ابغى|نبي).*(اتمشى|نتمشى|تمشية|مشوار)',
+            r'(اماكن|مكان).*(تمشية|مشي|ممشى)',
+        ],
+        'priority': 10
+    },
+    IntentType.OUTING_COFFEE: {
+        'keywords': [
+            'ودي اشرب قهوة', 'ابي قهوة', 'كوفي', 'كافيه حلو',
+            'مكان قهوة', 'قهوة مختصة', 'سبيشلتي', 'اسبريسو',
+            'شاهي', 'شاي', 'مشروب', 'مكان نقعد فيه',
+            'نقعد', 'نجلس', 'جلسة', 'جلسة حلوة',
+            'قعدة', 'مكان رايق', 'مكان هادي',
+        ],
+        'patterns': [
+            r'(ودي|ابي|ابغى).*(اشرب|قهوة|كوفي|كافيه)',
+            r'(مكان|محل).*(قهوة|كوفي|نقعد|نجلس|رايق|هادي)',
+            r'(جلسة|قعدة).*(حلوة|رايقة|هادية)?',
+        ],
+        'priority': 10
+    },
+    IntentType.OUTING_FAMILY: {
+        'keywords': [
+            'عائلة', 'عائلي', 'عوائل', 'اهل', 'اهلي', 'حريم',
+            'طلعة عائلية', 'مكان عوائل', 'مكان عائلي',
+            'بنات', 'زوجة', 'زوجتي', 'ام', 'امي', 'اخت', 'اختي',
+            'جده', 'جدتي', 'عيال', 'العيال',
+        ],
+        'patterns': [
+            r'(طلعة|خروجة|مكان).*(عائل|عوائل|اهل)',
+            r'(ابي|ابغى|ودي).*(اطلع|اروح).*(مع|معي).*(اهل|عائل|حريم|زوجت)',
+            r'(مكان|اماكن).*(عوائل|عائل)',
+        ],
+        'priority': 10
+    },
+    IntentType.OUTING_FRIENDS: {
+        'keywords': [
+            'ربع', 'الربع', 'شباب', 'الشباب', 'اصحاب', 'اصدقاء',
+            'طلعة شباب', 'مع الربع', 'مع الشباب', 'مع اصحابي',
+            'تجمع', 'سوالف', 'سهرة', 'سهرة شباب',
+            'شلة', 'قروب', 'مجموعة',
+        ],
+        'patterns': [
+            r'(طلعة|خروجة|سهرة).*(شباب|ربع|اصحاب)',
+            r'(مع|معي).*(الربع|الشباب|اصحاب|اصدقاء)',
+            r'(مكان|اماكن).*(شباب|ربع|تجمع|سوالف)',
+        ],
+        'priority': 10
+    },
+    IntentType.OUTING_ROMANTIC: {
+        'keywords': [
+            'رومانسي', 'رومانسية', 'حبيبتي', 'حبيبي', 'زوجتي', 'خطيبتي',
+            'ذكرى', 'ذكرى زواج', 'مناسبة', 'خاص', 'خصوصية',
+            'انا وزوجتي', 'انا وخطيبتي', 'لحالنا',
+        ],
+        'patterns': [
+            r'(مكان|طلعة|خروجة|عشاء).*(رومانسي|خاص|خصوصي)',
+            r'(انا و|مع).*(زوجت|خطيبت|حبيبت)',
+            r'(ذكرى|مناسبة).*(زواج|خطوبة)?',
+        ],
+        'priority': 10
+    },
+    IntentType.OUTING_KIDS: {
+        'keywords': [
+            'اطفال', 'عيال', 'العيال', 'صغار', 'بنتي', 'ولدي',
+            'العاب اطفال', 'ملاهي', 'ملعب اطفال', 'ترامبولين',
+            'مكان اطفال', 'العاب', 'حديقة العاب',
+            'العيال ملوا', 'يلعبون', 'يلعبوا',
+        ],
+        'patterns': [
+            r'(مكان|اماكن).*(اطفال|عيال|صغار|العاب)',
+            r'(ابي|ابغى|ودي).*(اخذ|اودي).*(العيال|الاطفال|بنتي|ولدي)',
+            r'(العيال|الاطفال).*(ملوا|ملل|يلعب)',
+        ],
+        'priority': 10
+    },
+    IntentType.WEEKEND_PLAN: {
+        'keywords': [
+            'ويكند', 'نهاية الاسبوع', 'عطلة', 'اجازة', 'الخميس', 'الجمعة',
+            'يوم الخميس', 'يوم الجمعة', 'خطة الويكند', 'برنامج عطلة',
+            'السبت', 'يوم السبت',
+        ],
+        'patterns': [
+            r'(خطة|برنامج).*(ويكند|عطلة|اجازة|نهاية الاسبوع)',
+            r'(وش|ايش).*(اسوي|نسوي).*(الويكند|العطلة|الاجازة|الخميس|الجمعة)',
+        ],
+        'priority': 11
+    },
+    IntentType.EVENING_PLAN: {
+        'keywords': [
+            'الليلة', 'الليل', 'مساء', 'المساء', 'العصر', 'المغرب', 'العشاء',
+            'سهرة', 'سهرتنا', 'بالليل', 'الحين', 'توه',
+            'طلعة الليل', 'خروجة مسائية', 'طلعة مسائية',
+        ],
+        'patterns': [
+            r'(وش|ايش).*(اسوي|نسوي).*(الليل|المساء|الحين|بالليل)',
+            r'(خطة|طلعة|خروجة).*(مسائي|ليلي|الليل|المساء)',
+            r'(سهرة|سهرتنا).*(الليل|اليوم)?',
+        ],
+        'priority': 11
+    },
+    IntentType.MORNING_PLAN: {
+        'keywords': [
+            'الصباح', 'الصبح', 'صباح', 'بكرة', 'باكر', 'بدري',
+            'فطور', 'افطر', 'الضحى', 'صباحية',
+            'طلعة صباحية', 'خروجة صباحية',
+        ],
+        'patterns': [
+            r'(وش|ايش).*(اسوي|نسوي).*(الصبح|الصباح|بكرة|باكر)',
+            r'(خطة|طلعة|خروجة).*(صباحي|الصبح|الصباح)',
+        ],
+        'priority': 11
+    },
+    IntentType.PREFERENCE_RESPONSE: {
+        'keywords': [
+            'ودي', 'ابي', 'ابغى', 'حاب', 'احب', 'يعجبني',
+            'اتمشى واكل', 'تمشية واكل', 'قهوة واكل',
+            'طبيعة', 'هدوء', 'حركة', 'مغامرة',
+            'تسوق', 'شوبنق', 'تسوق واكل',
+        ],
+        'patterns': [
+            r'^(ودي|ابي|ابغى|احب|حاب)\s+(اتمشى|اكل|قهوة|اتسوق|العب)',
+            r'^(تمشية|اكل|قهوة|تسوق|مغامرة|هدوء|طبيعة)',
+        ],
+        'priority': 9
+    },
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🔍 نوايا البحث والخدمات الأصلية
+    # ═══════════════════════════════════════════════════════════════
     IntentType.HELP: {
-        'keywords': ['مساعدة', 'ساعدني', 'كيف', 'شرح', 'وش اسوي', 'ايش اقدر'],
-        'patterns': [r'كيف (استخدم|اسوي)', r'وش (اسوي|اقدر)'],
+        'keywords': ['مساعدة', 'ساعدني', 'كيف', 'شرح'],
+        'patterns': [r'كيف (استخدم|اسوي)'],
         'priority': 9
     },
     IntentType.HUNGRY: {
         'keywords': ['جوعان', 'جعان', 'جيعان', 'جعت', 'جوعت', 'ابي اكل', 'ابغى اكل'],
         'patterns': [r'^(انا\s+)?(جوعان|جعان|جيعان)$', r'^جعت$', r'^جوعت$'],
-        'priority': 9  # أولوية عالية للجوع بدون تحديد
+        'priority': 9
     },
     IntentType.GET_BEST: {
         'keywords': ['افضل', 'أفضل', 'احسن', 'أحسن', 'اجود', 'أجود', 'اعلى تقييم'],
@@ -90,6 +331,100 @@ INTENT_PATTERNS = {
         'patterns': [r'(مشكلة|شكوى)', r'ما (نفع|زبط)'],
         'priority': 2
     },
+}
+
+# النوايا السياحية التي تحتاج خطة يومية
+TOURISM_INTENTS = [
+    IntentType.DAILY_PLAN, IntentType.ACTIVITY_SUGGESTION, IntentType.MOOD_BASED,
+    IntentType.EXPLORE, IntentType.OUTING_FOOD, IntentType.OUTING_WALK,
+    IntentType.OUTING_COFFEE, IntentType.OUTING_FAMILY, IntentType.OUTING_FRIENDS,
+    IntentType.OUTING_ROMANTIC, IntentType.OUTING_KIDS, IntentType.WEEKEND_PLAN,
+    IntentType.EVENING_PLAN, IntentType.MORNING_PLAN,
+]
+
+# النوايا التي تحتاج سؤال متابعة قبل تقديم الخطة
+NEEDS_FOLLOWUP_INTENTS = [
+    IntentType.ACTIVITY_SUGGESTION, IntentType.MOOD_BASED,
+    IntentType.EXPLORE, IntentType.DAILY_PLAN,
+]
+
+# تصنيف الأنشطة حسب نوع الخروجة - يستخدم لبناء الخطة اليومية
+ACTIVITY_CATEGORIES = {
+    'food': {
+        'label': 'أكل',
+        'search_queries': ['مطعم', 'مطاعم عنيزة'],
+        'google_types': ['restaurant'],
+    },
+    'coffee': {
+        'label': 'قهوة',
+        'search_queries': ['كافيه', 'كوفي شوب'],
+        'google_types': ['cafe', 'coffee_shop'],
+    },
+    'walk': {
+        'label': 'تمشية',
+        'search_queries': ['حديقة', 'منتزه', 'ممشى'],
+        'google_types': ['park'],
+    },
+    'shopping': {
+        'label': 'تسوق',
+        'search_queries': ['مول', 'سوق', 'مركز تجاري'],
+        'google_types': ['shopping_mall'],
+    },
+    'entertainment': {
+        'label': 'ترفيه',
+        'search_queries': ['ملاهي', 'العاب', 'ترفيه'],
+        'google_types': ['amusement_park', 'movie_theater'],
+    },
+    'culture': {
+        'label': 'ثقافة وتراث',
+        'search_queries': ['متحف', 'تراث', 'معالم عنيزة'],
+        'google_types': ['museum', 'tourist_attraction'],
+    },
+    'nature': {
+        'label': 'طبيعة',
+        'search_queries': ['حديقة', 'روضة', 'منتزه طبيعي'],
+        'google_types': ['park', 'natural_feature'],
+    },
+    'kids': {
+        'label': 'أطفال',
+        'search_queries': ['ملاهي اطفال', 'العاب اطفال', 'ملعب اطفال'],
+        'google_types': ['amusement_park'],
+    },
+    'dessert': {
+        'label': 'حلويات',
+        'search_queries': ['حلويات', 'ايسكريم', 'كيك'],
+        'google_types': ['bakery'],
+    },
+    'breakfast': {
+        'label': 'فطور',
+        'search_queries': ['فطور', 'فول', 'فطور شعبي'],
+        'google_types': ['restaurant'],
+    },
+    'lunch': {
+        'label': 'غداء',
+        'search_queries': ['مطعم غداء', 'كبسة', 'مندي'],
+        'google_types': ['restaurant'],
+    },
+    'dinner': {
+        'label': 'عشاء',
+        'search_queries': ['مطعم عشاء', 'مطعم'],
+        'google_types': ['restaurant'],
+    },
+}
+
+# قوالب الخطط الجاهزة حسب نوع النية
+PLAN_TEMPLATES = {
+    IntentType.OUTING_FOOD: ['coffee', 'food', 'dessert'],
+    IntentType.OUTING_WALK: ['coffee', 'walk', 'food'],
+    IntentType.OUTING_COFFEE: ['coffee', 'walk'],
+    IntentType.OUTING_FAMILY: ['breakfast', 'walk', 'lunch', 'entertainment'],
+    IntentType.OUTING_FRIENDS: ['coffee', 'entertainment', 'dinner'],
+    IntentType.OUTING_ROMANTIC: ['coffee', 'walk', 'dinner'],
+    IntentType.OUTING_KIDS: ['kids', 'lunch', 'dessert'],
+    IntentType.WEEKEND_PLAN: ['breakfast', 'culture', 'lunch', 'walk', 'coffee', 'dinner'],
+    IntentType.EVENING_PLAN: ['coffee', 'walk', 'dinner'],
+    IntentType.MORNING_PLAN: ['breakfast', 'walk', 'coffee'],
+    IntentType.DAILY_PLAN: ['breakfast', 'walk', 'lunch', 'coffee', 'dinner'],
 }
 
 # تصنيفات شاملة للأماكن والخدمات
@@ -396,12 +731,40 @@ def detect_intent(text: str) -> Intent:
         IntentType.GET_DIRECTIONS
     ]
     
+    # النوايا السياحية تستخدم Google Maps دائماً
+    if best_intent in TOURISM_INTENTS:
+        use_google = True
+    
+    # تحديد إذا تحتاج سؤال متابعة
+    follow_up = best_intent in NEEDS_FOLLOWUP_INTENTS
+    
+    # تحديد نوع الخطة
+    plan_type_map = {
+        IntentType.DAILY_PLAN: 'daily',
+        IntentType.WEEKEND_PLAN: 'weekend',
+        IntentType.EVENING_PLAN: 'evening',
+        IntentType.MORNING_PLAN: 'morning',
+        IntentType.OUTING_FOOD: 'food_outing',
+        IntentType.OUTING_WALK: 'walk_outing',
+        IntentType.OUTING_COFFEE: 'coffee_outing',
+        IntentType.OUTING_FAMILY: 'family_outing',
+        IntentType.OUTING_FRIENDS: 'friends_outing',
+        IntentType.OUTING_ROMANTIC: 'romantic_outing',
+        IntentType.OUTING_KIDS: 'kids_outing',
+        IntentType.ACTIVITY_SUGGESTION: 'suggestion',
+        IntentType.MOOD_BASED: 'mood',
+        IntentType.EXPLORE: 'explore',
+    }
+    p_type = plan_type_map.get(best_intent, '')
+    
     return Intent(
         type=best_intent,
         confidence=confidence,
         entities=entities,
         original_text=text_clean,
-        use_google=use_google
+        use_google=use_google,
+        needs_followup=follow_up,
+        plan_type=p_type
     )
 
 
@@ -409,14 +772,34 @@ def get_intent_response_template(intent: Intent) -> str:
     """الحصول على قالب الرد باللهجة القصيمية"""
     templates = {
         IntentType.GREETING: "هلا والله! 🐺\nأنا ذيبان، دليلك في عنيزة.\nوش تبي؟",
-        IntentType.HELP: "ابشر! أقدر أساعدك في:\n🔧 خدمات (كهربائي، سباك، نجار)\n🍽️ مطاعم وكافيهات\n🏥 صيدليات ومستشفيات\n\nقل لي وش تحتاج!",
+        IntentType.HELP: "ابشر! أقدر أساعدك في:\n🔧 خدمات (كهربائي، سباك، نجار)\n🍽️ مطاعم وكافيهات\n🏥 صيدليات ومستشفيات\n🗺️ خطط يومية وسياحية\n\nقل لي وش تحتاج!",
         IntentType.HUNGRY: "جوعان؟ 🍽️\nوش تحب تاكل؟\n\n🌯 شاورما\n🍔 برقر\n🍕 بيتزا\n🍗 بروستد\n🍚 كبسة/مندي\n☕ كافيه\n\nقل لي وابشر!",
         IntentType.FEEDBACK: "الله يعطيك العافية! 🐺\nتبي شي ثاني؟",
         IntentType.COMPLAINT: "لا والله؟ 😕\nقل لي وش المشكلة وابشر بالحل.",
         IntentType.UNKNOWN: "ما فهمت عليك 🤔\nقل لي بالضبط وش تبي؟",
+        # قوالب سياحية
+        IntentType.ACTIVITY_SUGGESTION: "حياك! 🐺 عندي اقتراحات كثير...\nبس قل لي:\n- وش جوّك اليوم؟ 🤔\n- تحب تمشية، أكل، قهوة، تسوق؟\n- لحالك ولا مع أحد؟",
+        IntentType.MOOD_BASED: "فهمت عليك! 😄\nقل لي وش تحب أكثر:\n🚶 تمشية ومناظر\n☕ قهوة ومكان رايق\n🍽️ أكل وتجربة مطاعم\n🛍️ تسوق\n🎮 ترفيه والعاب",
+        IntentType.EXPLORE: "عنيزة فيها أماكن حلوة! 🏛️\nوش يهمك أكثر:\n🕌 تراث وتاريخ\n🌿 طبيعة وحدائق\n🍽️ مطاعم وكافيهات\n🛍️ تسوق ومولات",
+        IntentType.DAILY_PLAN: "ابشر! أسوي لك خطة يومية 📋\nبس قل لي:\n- وش تحب؟ (أكل، تمشية، قهوة، تسوق)\n- مع مين؟ (لحالك، عائلة، أصحاب)\n- صباح ولا مساء؟",
     }
     
     return templates.get(intent.type, "")
+
+
+def is_tourism_intent(intent: Intent) -> bool:
+    """هل النية سياحية/تخطيط يومي"""
+    return intent.type in TOURISM_INTENTS
+
+
+def needs_followup(intent: Intent) -> bool:
+    """هل النية تحتاج سؤال متابعة لمعرفة تفضيلات المستخدم"""
+    return intent.type in NEEDS_FOLLOWUP_INTENTS
+
+
+def get_plan_activities(intent: Intent) -> List[str]:
+    """الحصول على قائمة الأنشطة المناسبة لنوع الخطة"""
+    return PLAN_TEMPLATES.get(intent.type, ['coffee', 'walk', 'food'])
 
 
 def should_search_database(intent: Intent) -> bool:

@@ -50,16 +50,47 @@ def extract_message_data(data: dict) -> dict:
         message = messages[0]
         contact = value.get('contacts', [{}])[0]
         
+        # استخراج بيانات الوسائط
+        media_data = None
+        msg_type = message.get('type')
+        
+        if msg_type == 'image':
+            img = message.get('image', {})
+            media_data = {
+                'media_type': 'image',
+                'media_id': img.get('id', ''),
+                'mime_type': img.get('mime_type', 'image/jpeg'),
+                'caption': img.get('caption', ''),
+            }
+        elif msg_type in ('audio', 'voice'):
+            aud = message.get('audio', message.get('voice', {}))
+            media_data = {
+                'media_type': 'audio',
+                'media_id': aud.get('id', ''),
+                'mime_type': aud.get('mime_type', 'audio/ogg'),
+            }
+        elif msg_type == 'video':
+            media_data = {
+                'media_type': 'video',
+                'media_id': message.get('video', {}).get('id', ''),
+            }
+        elif msg_type == 'document':
+            media_data = {
+                'media_type': 'document',
+                'media_id': message.get('document', {}).get('id', ''),
+            }
+        
         return {
             'message_id': message.get('id'),
             'from': message.get('from'),
             'timestamp': message.get('timestamp'),
-            'type': message.get('type'),
+            'type': msg_type,
             'text': message.get('text', {}).get('body', ''),
             'contact_name': contact.get('profile', {}).get('name', ''),
             'button_reply': message.get('interactive', {}).get('button_reply', {}),
             'list_reply': message.get('interactive', {}).get('list_reply', {}),
             'location': message.get('location', {}),
+            'media': media_data,
         }
     except (KeyError, IndexError) as e:
         logger.error(f"Error extracting message data: {e}")
@@ -100,31 +131,52 @@ def get_or_create_conversation(user: WhatsAppUser) -> Conversation:
 
 
 def process_incoming_message(message_data: dict):
-    """معالجة الرسالة الواردة باستخدام وكيل الذكاء الاصطناعي"""
+    """معالجة الرسالة الواردة باستخدام وكيل الذكاء الاصطناعي - يدعم نصوص وصور وصوت"""
     phone_number = message_data.get('from')
     text = message_data.get('text', '')
     contact_name = message_data.get('contact_name', '')
+    media = message_data.get('media')
     
     user = get_or_create_user(phone_number, contact_name)
     conversation = get_or_create_conversation(user)
-    
-    # حفظ رسالة المستخدم
-    conversation.add_message('user', text)
     
     # تحديد الرسالة كمقروءة
     whatsapp_api.mark_message_as_read(message_data.get('message_id'))
     
     # معالجة الرد
     if message_data.get('button_reply'):
+        conversation.add_message('user', text or 'button')
         button_id = message_data['button_reply'].get('id', '')
         response = handle_button_reply(user, conversation, button_id)
+    
     elif message_data.get('list_reply'):
+        conversation.add_message('user', text or 'list')
         list_id = message_data['list_reply'].get('id', '')
         response = handle_list_reply(user, conversation, list_id)
+    
+    # ── معالجة الصور ──
+    elif media and media.get('media_type') == 'image':
+        logger.info(f"[WEBHOOK] Image message from {phone_number}")
+        conversation.add_message('user', media.get('caption', '') or '📸 [صورة]')
+        response = handle_image_message(user, conversation, media)
+    
+    # ── معالجة الصوت ──
+    elif media and media.get('media_type') == 'audio':
+        logger.info(f"[WEBHOOK] Audio message from {phone_number}")
+        conversation.add_message('user', '🎤 [رسالة صوتية]')
+        response = handle_audio_message(user, conversation, media)
+    
+    # ── فيديو ومستندات ──
+    elif media and media.get('media_type') in ('video', 'document'):
+        conversation.add_message('user', f"📎 [{media['media_type']}]")
+        response = "حالياً أقدر أفهم الصور والرسائل الصوتية والنصوص 🐺\nأرسل لي صورة المنتج أو اكتب لي وش تبي!"
+    
     elif text:
+        conversation.add_message('user', text)
         response = handle_text_message(user, conversation, text)
+    
     else:
-        response = "عذرا لم أفهم رسالتك. أرسل لي نص أو اختر من القائمة."
+        response = "عذرا لم أفهم رسالتك. أرسل لي نص أو صورة أو رسالة صوتية!"
     
     # إرسال الرد
     if response:
@@ -132,6 +184,66 @@ def process_incoming_message(message_data: dict):
         conversation.add_message('bot', response)
     
     return True
+
+
+def handle_image_message(user: WhatsAppUser, conversation: Conversation, media: dict) -> str:
+    """معالجة رسالة صورة - تحليل المنتج واقتراح أماكن البيع"""
+    try:
+        from ai_agent.agent import dhiban_agent
+        
+        media_id = media.get('media_id', '')
+        if not media_id:
+            return "ما قدرت أحمّل الصورة 😕 جرب ترسلها مرة ثانية!"
+        
+        # تحميل الصورة كـ base64 عبر Meta API
+        image_base64 = whatsapp_api.get_media_as_base64(media_id)
+        
+        if image_base64:
+            response = dhiban_agent.process_image_message(
+                user_id=user.phone_number,
+                image_base64=image_base64,
+                mime_type=media.get('mime_type', 'image/jpeg'),
+                caption=media.get('caption', ''),
+            )
+        else:
+            response = "ما قدرت أحمّل الصورة 😕\nجرب ترسلها مرة ثانية!"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Image message handling error: {e}", exc_info=True)
+        return "صار خطأ في تحليل الصورة 😕 جرب مرة ثانية!"
+
+
+def handle_audio_message(user: WhatsAppUser, conversation: Conversation, media: dict) -> str:
+    """معالجة رسالة صوتية - تحويل لنص ثم معالجة"""
+    try:
+        from ai_agent.agent import dhiban_agent
+        
+        media_id = media.get('media_id', '')
+        if not media_id:
+            return "ما قدرت أحمّل الرسالة الصوتية 😕 جرب مرة ثانية أو اكتب لي!"
+        
+        # الحصول على رابط التحميل من Meta API
+        media_url = whatsapp_api.get_media_url(media_id)
+        
+        if media_url:
+            # تحميل الصوت مع headers المصادقة
+            download_headers = {'Authorization': f'Bearer {whatsapp_api.access_token}'}
+            response = dhiban_agent.process_voice_message(
+                user_id=user.phone_number,
+                audio_url=media_url,
+                mime_type=media.get('mime_type', 'audio/ogg'),
+                download_headers=download_headers,
+            )
+        else:
+            response = "ما قدرت أحمّل الرسالة الصوتية 😕\nجرب ترسلها مرة ثانية أو اكتب لي!"
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Audio message handling error: {e}", exc_info=True)
+        return "صار خطأ في تحليل الرسالة الصوتية 😕 جرب مرة ثانية!"
 
 
 def handle_text_message(user: WhatsAppUser, conversation: Conversation, text: str) -> str:

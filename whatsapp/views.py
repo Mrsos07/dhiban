@@ -11,7 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.conf import settings
 
-from ai_agent.agent import process_user_message
+from ai_agent.agent import process_user_message, dhiban_agent
 
 logger = logging.getLogger(__name__)
 
@@ -90,18 +90,14 @@ def handle_message(request):
                     if not user_id:
                         continue
                     
-                    # معالجة الرسائل النصية فقط
+                    # معالجة الرسائل النصية
                     if message_type == 'text':
                         text = message.get('text', {}).get('body', '')
                         if text:
-                            # معالجة الرسالة مع user_id الفريد
-                            # هذا يضمن عدم تداخل المحادثات
                             response = process_user_message(
                                 message=text,
-                                user_id=user_id  # رقم الواتساب الفريد لكل عميل
+                                user_id=user_id
                             )
-                            
-                            # إرسال الرد
                             send_whatsapp_message(user_id, response)
                     
                     # معالجة الرسائل التفاعلية (الأزرار)
@@ -115,6 +111,51 @@ def handle_message(request):
                                 user_id=user_id
                             )
                             send_whatsapp_message(user_id, response)
+                    
+                    # معالجة الصور
+                    elif message_type == 'image':
+                        img = message.get('image', {})
+                        media_id = img.get('id', '')
+                        if media_id:
+                            try:
+                                image_base64 = _download_media_base64(media_id)
+                                if image_base64:
+                                    response = dhiban_agent.process_image_message(
+                                        user_id=user_id,
+                                        image_base64=image_base64,
+                                        mime_type=img.get('mime_type', 'image/jpeg'),
+                                        caption=img.get('caption', ''),
+                                    )
+                                else:
+                                    response = "ما قدرت أحمّل الصورة 😕 جرب مرة ثانية!"
+                                send_whatsapp_message(user_id, response)
+                            except Exception as e:
+                                logger.error(f"Image processing error: {e}")
+                                send_whatsapp_message(user_id, "صار خطأ في تحليل الصورة 😕 جرب مرة ثانية!")
+                    
+                    # معالجة الرسائل الصوتية
+                    elif message_type in ('audio', 'voice'):
+                        aud = message.get('audio', message.get('voice', {}))
+                        media_id = aud.get('id', '')
+                        if media_id:
+                            try:
+                                media_url = _get_media_url(media_id)
+                                if media_url:
+                                    download_headers = {
+                                        'Authorization': f'Bearer {settings.WHATSAPP_ACCESS_TOKEN}'
+                                    }
+                                    response = dhiban_agent.process_voice_message(
+                                        user_id=user_id,
+                                        audio_url=media_url,
+                                        mime_type=aud.get('mime_type', 'audio/ogg'),
+                                        download_headers=download_headers,
+                                    )
+                                else:
+                                    response = "ما قدرت أحمّل الرسالة الصوتية 😕 اكتب لي بدالها!"
+                                send_whatsapp_message(user_id, response)
+                            except Exception as e:
+                                logger.error(f"Audio processing error: {e}")
+                                send_whatsapp_message(user_id, "صار خطأ في تحليل الصوت 😕 جرب مرة ثانية!")
         
         return HttpResponse('OK')
     
@@ -124,6 +165,45 @@ def handle_message(request):
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         return HttpResponse('Error', status=500)
+
+
+def _get_media_url(media_id: str) -> str:
+    """الحصول على رابط تحميل الوسائط من Meta API"""
+    import httpx
+    
+    url = f"https://graph.facebook.com/{settings.WHATSAPP_API_VERSION}/{media_id}"
+    headers = {
+        'Authorization': f'Bearer {settings.WHATSAPP_ACCESS_TOKEN}',
+    }
+    try:
+        response = httpx.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+        return data.get('url', '')
+    except Exception as e:
+        logger.error(f"Failed to get media URL for {media_id}: {e}")
+        return ''
+
+
+def _download_media_base64(media_id: str) -> str:
+    """تحميل الوسائط من Meta API وتحويلها لـ base64"""
+    import httpx
+    import base64
+    
+    media_url = _get_media_url(media_id)
+    if not media_url:
+        return ''
+    
+    headers = {
+        'Authorization': f'Bearer {settings.WHATSAPP_ACCESS_TOKEN}',
+    }
+    try:
+        response = httpx.get(media_url, headers=headers, timeout=60, follow_redirects=True)
+        response.raise_for_status()
+        return base64.b64encode(response.content).decode('utf-8')
+    except Exception as e:
+        logger.error(f"Failed to download media: {e}")
+        return ''
 
 
 def send_whatsapp_message(to: str, message: str):

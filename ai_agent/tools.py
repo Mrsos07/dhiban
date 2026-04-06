@@ -7,7 +7,11 @@ from typing import List, Dict, Optional
 from django.db.models import Q
 from suppliers.models import Supplier, Category
 from .places import search_nearby_places, get_place_details, format_google_place
-from .intents import detect_intent, IntentType, should_search_database, should_search_google
+from .intents import (
+    detect_intent, IntentType, should_search_database, should_search_google,
+    is_tourism_intent, needs_followup, get_plan_activities,
+    ACTIVITY_CATEGORIES, PLAN_TEMPLATES, TOURISM_INTENTS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -439,6 +443,122 @@ def format_supplier_response(supplier: Dict) -> str:
     return response.strip()
 
 
+def build_daily_plan(
+    activities: Optional[List[str]] = None,
+    plan_type: str = 'daily',
+    preferences: Optional[str] = None
+) -> str:
+    """
+    بناء خطة يومية سياحية مع روابط Google Maps لكل مكان
+    
+    Args:
+        activities: قائمة الأنشطة المطلوبة مثل ['coffee', 'walk', 'food']
+        plan_type: نوع الخطة (daily/evening/morning/weekend)
+        preferences: تفضيلات إضافية من المستخدم
+    """
+    if not activities:
+        activities = ['coffee', 'walk', 'food']
+    
+    # أوقات تقريبية حسب نوع الخطة
+    time_slots = {
+        'morning': [
+            ('☀️ 7:00 - 8:30', 'فطور'),
+            ('🌤️ 9:00 - 10:30', 'تمشية/نشاط'),
+            ('☕ 11:00 - 12:00', 'قهوة/استراحة'),
+        ],
+        'evening': [
+            ('🌅 4:00 - 5:30', 'قهوة/بداية'),
+            ('🚶 5:30 - 7:00', 'تمشية/نشاط'),
+            ('🍽️ 7:30 - 9:00', 'عشاء'),
+        ],
+        'daily': [
+            ('☀️ 8:00 - 9:30', 'فطور'),
+            ('🌤️ 10:00 - 11:30', 'نشاط صباحي'),
+            ('🍽️ 12:30 - 2:00', 'غداء'),
+            ('☕ 4:00 - 5:30', 'قهوة/استراحة'),
+            ('🌙 7:00 - 9:00', 'عشاء/سهرة'),
+        ],
+        'weekend': [
+            ('☀️ 8:00 - 9:30', 'فطور'),
+            ('🏛️ 10:00 - 12:00', 'استكشاف/زيارة'),
+            ('🍽️ 12:30 - 2:00', 'غداء'),
+            ('🚶 3:30 - 5:00', 'تمشية'),
+            ('☕ 5:00 - 6:30', 'قهوة'),
+            ('🌙 7:30 - 9:30', 'عشاء/سهرة'),
+        ],
+    }
+    
+    # اختيار الأوقات حسب نوع الخطة
+    slots = time_slots.get(plan_type, time_slots['daily'])
+    
+    # تقليم الأنشطة لتتناسب مع عدد الأوقات
+    plan_activities = activities[:len(slots)]
+    
+    # بناء الخطة
+    response = "📋 *خطتك اليومية في عنيزة* 🐺\n"
+    response += "═" * 30 + "\n\n"
+    
+    step_num = 1
+    seen_places = set()  # لتجنب تكرار الأماكن
+    
+    for i, activity_key in enumerate(plan_activities):
+        activity_info = ACTIVITY_CATEGORIES.get(activity_key)
+        if not activity_info:
+            continue
+        
+        # اختيار الوقت
+        time_slot = slots[i] if i < len(slots) else slots[-1]
+        time_str, time_label = time_slot
+        
+        # البحث عن مكان مناسب
+        search_query = activity_info['search_queries'][0]
+        places = search_google_places(
+            query=search_query,
+            place_type=activity_info['google_types'][0] if activity_info['google_types'] else None,
+            limit=3,
+            save_results=True
+        )
+        
+        # اختيار أفضل مكان غير مكرر
+        selected_place = None
+        for place in places:
+            place_name = place.get('name', '')
+            if place_name not in seen_places:
+                selected_place = place
+                seen_places.add(place_name)
+                break
+        
+        if not selected_place and places:
+            selected_place = places[0]
+        
+        # تنسيق الخطوة
+        response += f"*{step_num}. {time_str} — {activity_info['label']}*\n"
+        
+        if selected_place:
+            name = selected_place.get('name', 'مكان مميز')
+            rating = selected_place.get('rating', 0)
+            address = selected_place.get('address', '')
+            maps_url = build_maps_url(selected_place)
+            
+            response += f"   📍 *{name}*\n"
+            if rating:
+                response += f"   ⭐ {rating}/5\n"
+            if address:
+                response += f"   🏠 {address}\n"
+            if maps_url:
+                response += f"   🗺️ {maps_url}\n"
+        else:
+            response += f"   📍 ابحث عن أفضل {activity_info['label']} في عنيزة\n"
+        
+        response += "\n"
+        step_num += 1
+    
+    response += "═" * 30 + "\n"
+    response += "\n🐺 استمتع بيومك! تبي تعديل على الخطة؟"
+    
+    return response.strip()
+
+
 def format_search_results(results: Dict, query: str = "") -> str:
     """تنسيق نتائج البحث المدمجة"""
     db_results = results.get('database_results', [])
@@ -549,6 +669,36 @@ TOOLS = [
                 "type": "object",
                 "properties": {},
                 "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "build_daily_plan",
+            "description": "بناء خطة يومية سياحية كاملة مع روابط Google Maps لكل مكان. استخدم هذه الأداة عندما يطلب المستخدم خطة يومية أو اقتراح أنشطة أو وش يسوي اليوم أو يبي يطلع أو خروجة مع العائلة/الأصحاب",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "activities": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["food", "coffee", "walk", "shopping", "entertainment", "culture", "nature", "kids", "dessert", "breakfast", "lunch", "dinner"]
+                        },
+                        "description": "قائمة الأنشطة المطلوبة بالترتيب. مثال: ['coffee', 'walk', 'dinner'] أو ['breakfast', 'culture', 'lunch', 'coffee', 'dinner']"
+                    },
+                    "plan_type": {
+                        "type": "string",
+                        "enum": ["daily", "morning", "evening", "weekend"],
+                        "description": "نوع الخطة: daily=يوم كامل، morning=صباحية، evening=مسائية، weekend=نهاية أسبوع"
+                    },
+                    "preferences": {
+                        "type": "string",
+                        "description": "تفضيلات إضافية من المستخدم مثل: عائلي، شبابي، رومانسي، أطفال"
+                    }
+                },
+                "required": ["activities", "plan_type"]
             }
         }
     }
