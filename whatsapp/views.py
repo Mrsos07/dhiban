@@ -116,10 +116,12 @@ def handle_message(request):
                     elif message_type == 'image':
                         img = message.get('image', {})
                         media_id = img.get('id', '')
+                        logger.info(f"[VIEWS] Image message from {user_id}, media_id={media_id}, mime={img.get('mime_type')}")
                         if media_id:
                             try:
                                 image_base64 = _download_media_base64(media_id)
                                 if image_base64:
+                                    logger.info(f"[VIEWS] Downloaded image base64, length={len(image_base64)}")
                                     response = dhiban_agent.process_image_message(
                                         user_id=user_id,
                                         image_base64=image_base64,
@@ -127,10 +129,11 @@ def handle_message(request):
                                         caption=img.get('caption', ''),
                                     )
                                 else:
+                                    logger.error(f"[VIEWS] Failed to download image base64 for media_id={media_id}")
                                     response = "ما قدرت أحمّل الصورة 😕 جرب مرة ثانية!"
                                 send_whatsapp_message(user_id, response)
                             except Exception as e:
-                                logger.error(f"Image processing error: {e}")
+                                logger.error(f"[VIEWS] Image processing error: {e}", exc_info=True)
                                 send_whatsapp_message(user_id, "صار خطأ في تحليل الصورة 😕 جرب مرة ثانية!")
                     
                     # معالجة الرسائل الصوتية

@@ -34,37 +34,45 @@ def _detect_media_type(message: dict) -> dict:
     """
     اكتشاف نوع الوسائط في الرسالة (صورة، صوت، فيديو).
     يعيد dict مع media_type و mime_type و caption أو None.
+    
+    Evolution API ترسل الوسائط بأشكال مختلفة:
+    - إذا كان webhook base64=true: يكون base64 موجود في الـ message مباشرة
+    - بعض الإصدارات ترسل base64 في حقل منفصل خارج messageObj
     """
     # صورة
     if 'imageMessage' in message:
         img = message['imageMessage']
-        return {
+        media_info = {
             'media_type': 'image',
             'mime_type': img.get('mimetype', 'image/jpeg'),
             'caption': img.get('caption', ''),
             'url': img.get('url', ''),
             'base64': img.get('base64', ''),
         }
+        logger.info(f"[EVOLUTION] Detected image: mime={media_info['mime_type']}, has_base64={bool(media_info['base64'])}, has_url={bool(media_info['url'])}")
+        return media_info
     
     # صوت / رسالة صوتية
     if 'audioMessage' in message:
         aud = message['audioMessage']
-        return {
+        media_info = {
             'media_type': 'audio',
             'mime_type': aud.get('mimetype', 'audio/ogg; codecs=opus'),
             'url': aud.get('url', ''),
             'base64': aud.get('base64', ''),
-            'ptt': aud.get('ptt', True),  # push-to-talk (voice note)
+            'ptt': aud.get('ptt', True),
         }
+        logger.info(f"[EVOLUTION] Detected audio: mime={media_info['mime_type']}, has_base64={bool(media_info['base64'])}, has_url={bool(media_info['url'])}")
+        return media_info
     
-    # فيديو (نعلم المستخدم أننا لا ندعمه حالياً)
+    # فيديو
     if 'videoMessage' in message:
         return {
             'media_type': 'video',
             'mime_type': message['videoMessage'].get('mimetype', 'video/mp4'),
         }
     
-    # مستند (PDF, etc)
+    # مستند
     if 'documentMessage' in message:
         return {
             'media_type': 'document',
@@ -129,6 +137,26 @@ def extract_evolution_message(data: dict) -> dict:
         # اكتشاف الوسائط (صور، صوت)
         media_info = _detect_media_type(message_obj)
 
+        # بعض إصدارات Evolution API ترسل base64 في مستوى الـ raw data
+        if media_info and not media_info.get('base64'):
+            raw_base64 = raw.get('base64', '')
+            if raw_base64:
+                media_info['base64'] = raw_base64
+                logger.info(f"[EVOLUTION] Found base64 in raw data level for {media_info['media_type']}")
+
+        # رسالة وسائط (صورة أو صوت) — الأولوية للوسائط حتى لو يوجد caption نصي
+        if media_info:
+            logger.info(f"[EVOLUTION] Media message from {phone_number}: type={media_info['media_type']}, has_base64={bool(media_info.get('base64'))}")
+            return {
+                'event': 'message',
+                'phone_number': phone_number,
+                'text': media_info.get('caption', ''),
+                'contact_name': push_name,
+                'message_id': message_id,
+                'instance': instance,
+                'media': media_info,
+            }
+
         # رسالة نصية عادية
         if text:
             return {
@@ -141,21 +169,8 @@ def extract_evolution_message(data: dict) -> dict:
                 'media': None,
             }
 
-        # رسالة وسائط (صورة أو صوت)
-        if media_info:
-            logger.info(f"Media message from {phone_number}: type={media_info['media_type']}")
-            return {
-                'event': 'message',
-                'phone_number': phone_number,
-                'text': media_info.get('caption', ''),
-                'contact_name': push_name,
-                'message_id': message_id,
-                'instance': instance,
-                'media': media_info,
-            }
-
         # رسالة غير مدعومة
-        logger.debug(f"Unsupported message type from {phone_number}, skipping")
+        logger.debug(f"Unsupported message type from {phone_number}, keys={list(message_obj.keys())}")
         return None
 
     except Exception as e:
@@ -238,20 +253,26 @@ def process_evolution_message(msg: dict):
 
         # ── معالجة الصور ──
         if media and media.get('media_type') == 'image':
-            logger.info(f"[EVOLUTION] Image message from {phone_number}")
+            logger.info(f"[EVOLUTION] Image message from {phone_number}, message_id={message_id}")
             conversation.add_message('user', media.get('caption', '') or '📸 [صورة]')
 
-            # إزالة آخر رسالة لتجنب التكرار
-            history_clean = history  # التاريخ قبل إضافة الرسالة الحالية
+            history_clean = history
 
-            # محاولة تحميل الصورة كـ base64 عبر Evolution API
-            image_base64 = None
+            # ثلاث طرق للحصول على الصورة بالترتيب:
+            image_base64 = media.get('base64', '')  # 1. من الـ webhook مباشرة (إذا base64=true)
             image_url = media.get('url', '')
 
-            if message_id:
+            # 2. إذا لم يوجد base64 في الـ payload، حمّله عبر Evolution API
+            if not image_base64 and message_id:
+                logger.info(f"[EVOLUTION] No inline base64, downloading via API for message {message_id}")
                 image_base64 = evolution_api.download_media_base64(message_id)
+                if image_base64:
+                    logger.info(f"[EVOLUTION] Downloaded image base64 via API, length={len(image_base64)}")
+                else:
+                    logger.warning(f"[EVOLUTION] Failed to download image via API for message {message_id}")
 
             if image_base64:
+                logger.info(f"[EVOLUTION] Processing image with base64 (length={len(image_base64)})")
                 response = dhiban_agent.process_image_message(
                     user_id=phone_number,
                     image_base64=image_base64,
@@ -260,6 +281,8 @@ def process_evolution_message(msg: dict):
                     chat_history=history_clean
                 )
             elif image_url:
+                # 3. تحميل من URL مباشرة
+                logger.info(f"[EVOLUTION] Processing image with URL: {image_url[:100]}")
                 response = dhiban_agent.process_image_message(
                     user_id=phone_number,
                     image_url=image_url,
@@ -268,23 +291,25 @@ def process_evolution_message(msg: dict):
                     chat_history=history_clean
                 )
             else:
+                logger.error(f"[EVOLUTION] No base64 or URL available for image from {phone_number}")
                 response = "ما قدرت أحمّل الصورة 😕\nجرب ترسلها مرة ثانية!"
 
         # ── معالجة الصوت ──
         elif media and media.get('media_type') == 'audio':
-            logger.info(f"[EVOLUTION] Audio message from {phone_number}")
+            logger.info(f"[EVOLUTION] Audio message from {phone_number}, message_id={message_id}")
             conversation.add_message('user', '🎤 [رسالة صوتية]')
 
             history_clean = history
 
-            # تحميل الصوت كـ base64
-            audio_base64 = None
+            audio_base64 = media.get('base64', '')
             audio_url = media.get('url', '')
 
-            if message_id:
+            if not audio_base64 and message_id:
+                logger.info(f"[EVOLUTION] No inline base64 audio, downloading via API")
                 audio_base64 = evolution_api.download_media_base64(message_id)
 
             if audio_base64:
+                logger.info(f"[EVOLUTION] Processing audio with base64 (length={len(audio_base64)})")
                 response = dhiban_agent.process_voice_message(
                     user_id=phone_number,
                     audio_base64=audio_base64,
@@ -292,6 +317,7 @@ def process_evolution_message(msg: dict):
                     chat_history=history_clean
                 )
             elif audio_url:
+                logger.info(f"[EVOLUTION] Processing audio with URL")
                 response = dhiban_agent.process_voice_message(
                     user_id=phone_number,
                     audio_url=audio_url,
@@ -299,6 +325,7 @@ def process_evolution_message(msg: dict):
                     chat_history=history_clean
                 )
             else:
+                logger.error(f"[EVOLUTION] No base64 or URL available for audio from {phone_number}")
                 response = "ما قدرت أحمّل الرسالة الصوتية 😕\nجرب ترسلها مرة ثانية أو اكتب لي!"
 
         # ── فيديو ومستندات (غير مدعومة حالياً) ──
@@ -309,7 +336,6 @@ def process_evolution_message(msg: dict):
         # ── رسالة نصية عادية ──
         elif text:
             conversation.add_message('user', text)
-            # إزالة آخر رسالة من الـ history
             if history and history[-1].get('role') == 'user':
                 history = history[:-1]
             response = dhiban_agent.process_message_with_history(text, chat_history=history)

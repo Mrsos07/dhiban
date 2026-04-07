@@ -101,7 +101,7 @@ class EvolutionAPI:
             payload['webhook'] = {
                 'url': webhook_url,
                 'byEvents': False,
-                'base64': False,
+                'base64': True,
                 'events': [
                     'MESSAGES_UPSERT',
                     'MESSAGES_UPDATE',
@@ -274,11 +274,11 @@ class EvolutionAPI:
     # ─── Webhook Setup ──────────────────────────────────────────────────────────
 
     def set_webhook(self, webhook_url: str) -> Dict:
-        """تعيين webhook URL"""
+        """تعيين webhook URL مع تفعيل base64 لاستقبال الوسائط"""
         payload = {
             'url': webhook_url,
             'byEvents': False,
-            'base64': False,
+            'base64': True,
             'events': [
                 'MESSAGES_UPSERT',
                 'MESSAGES_UPDATE',

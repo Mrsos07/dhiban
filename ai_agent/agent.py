@@ -30,7 +30,7 @@ class DhibanAgent:
     """
     
     # عدد الرسائل المحفوظة في الذاكرة
-    MEMORY_SIZE = 5
+    MEMORY_SIZE = 15
     
     def __init__(self):
         self.client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
@@ -225,45 +225,12 @@ class DhibanAgent:
             # إضافة رسالة المستخدم الحالية
             messages.append({"role": "user", "content": user_message})
             
-            # تحديد إذا كانت الرسالة تحتاج بحث - إجبار على استخدام الأداة
-            search_keywords = [
-                'مطعم', 'كافيه', 'قهوة', 'صيدلية', 'مستشفى', 'عيادة', 'كهربائي',
-                'سباك', 'نجار', 'دهان', 'مكيف', 'محل', 'بقالة', 'سوبر', 'بنك',
-                'فندق', 'مول', 'حلاق', 'مغسلة', 'ورشة', 'مندي', 'شاورما',
-                'برغر', 'بيتزا', 'حلويات', 'خبز', 'دجاج', 'لحم', 'سمك',
-                'أبي', 'ابي', 'أبغى', 'ابغى', 'أريد', 'بغيت', 'وين', 'فين',
-                'دلني', 'ساعدني', 'قريب', 'أقرب', 'زين', 'جيد', 'مميز'
-            ]
-            # كلمات سياحية/تخطيط يومي - تستخدم build_daily_plan
-            tourism_keywords = [
-                'خطة', 'برنامج', 'جدول', 'رتب لي', 'رتبلي', 'خطط لي', 'خططلي',
-                'وش اسوي', 'ايش اسوي', 'وش نسوي', 'اقترح', 'اقترحلي',
-                'ودي اطلع', 'ابي اطلع', 'وين اروح', 'وين نروح',
-                'طلعة', 'خروجة', 'سهرة', 'تمشية', 'اتمشى',
-                'ملان', 'ملل', 'زهقان', 'طفشان', 'اتسلى',
-                'استكشف', 'سياحة', 'معالم', 'تراث',
-                'عائلة', 'عوائل', 'ربع', 'شباب', 'اصحاب',
-                'ويكند', 'عطلة', 'اجازة', 'الليلة', 'الصباح',
-                'اطفال', 'عيال', 'ملاهي', 'رومانسي',
-                'ودي اتعشى', 'ودي اتغدى', 'ودي اتمشى',
-                'انصحني', 'تنصحني', 'فكرة', 'افكار',
-            ]
-            is_search = any(kw in user_message for kw in search_keywords)
-            is_tourism = any(kw in user_message for kw in tourism_keywords)
-            
-            if is_tourism:
-                tool_choice = {"type": "function", "function": {"name": "build_daily_plan"}}
-            elif is_search:
-                tool_choice = {"type": "function", "function": {"name": "combined_search"}}
-            else:
-                tool_choice = "auto"
-            
-            # إرسال لـ OpenAI مع الأدوات
+            # إرسال لـ OpenAI مع الأدوات - النموذج يقرر متى يستخدم الأداة بناء على المحادثة
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=TOOLS,
-                tool_choice=tool_choice,
+                tool_choice="auto",
                 temperature=temperature,
                 max_tokens=max_tokens
             )
@@ -287,13 +254,43 @@ class DhibanAgent:
                     google_result = search_google_places(query=q, limit=3)
                     if google_result:
                         result = format_google_results(google_result, q)
-                        logger.info(f"[AGENT] Google result: {repr(result[:200])}")
                 
-                logger.info(f"[AGENT] Final result to user: {repr(result[:300])}")
-                self._save_message(user_id, 'bot', result)
-                return result
+                # إعادة إرسال نتيجة الأداة لـ OpenAI ليصيغها بأسلوبه الودي
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    }]
+                })
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result
+                })
+                
+                # طلب من OpenAI يصيغ النتائج بأسلوبه المحادثاتي
+                final_response = self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                bot_response = final_response.choices[0].message.content
+                logger.info(f"[AGENT] Formatted response: {repr(str(bot_response)[:300])}")
+                
+                if not bot_response:
+                    bot_response = result  # fallback to raw result
+                
+                self._save_message(user_id, 'bot', bot_response)
+                return bot_response
             
-            # رد مباشر من OpenAI بدون أدوات
+            # رد مباشر من OpenAI بدون أدوات (محادثة/أسئلة توضيحية)
             bot_response = assistant_message.content
             logger.info(f"[AGENT] Direct OpenAI response (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
@@ -333,45 +330,14 @@ class DhibanAgent:
             
             messages.append({"role": "user", "content": user_message})
             
-            # إجبار على استخدام الأداة عند وجود طلب بحث
-            search_keywords = [
-                'مطعم', 'كافيه', 'قهوة', 'صيدلية', 'مستشفى', 'عيادة', 'كهربائي',
-                'سباك', 'نجار', 'دهان', 'مكيف', 'محل', 'بقالة', 'سوبر', 'بنك',
-                'فندق', 'مول', 'حلاق', 'مغسلة', 'ورشة', 'مندي', 'شاورما',
-                'برغر', 'بيتزا', 'حلويات', 'خبز', 'دجاج', 'لحم', 'سمك',
-                'أبي', 'ابي', 'أبغى', 'ابغى', 'أريد', 'بغيت', 'وين', 'فين',
-                'دلني', 'ساعدني', 'قريب', 'أقرب', 'زين', 'جيد', 'مميز'
-            ]
-            # كلمات سياحية/تخطيط يومي
-            tourism_keywords = [
-                'خطة', 'برنامج', 'جدول', 'رتب لي', 'رتبلي', 'خطط لي', 'خططلي',
-                'وش اسوي', 'ايش اسوي', 'وش نسوي', 'اقترح', 'اقترحلي',
-                'ودي اطلع', 'ابي اطلع', 'وين اروح', 'وين نروح',
-                'طلعة', 'خروجة', 'سهرة', 'تمشية', 'اتمشى',
-                'ملان', 'ملل', 'زهقان', 'طفشان', 'اتسلى',
-                'استكشف', 'سياحة', 'معالم', 'تراث',
-                'عائلة', 'عوائل', 'ربع', 'شباب', 'اصحاب',
-                'ويكند', 'عطلة', 'اجازة', 'الليلة', 'الصباح',
-                'اطفال', 'عيال', 'ملاهي', 'رومانسي',
-                'ودي اتعشى', 'ودي اتغدى', 'ودي اتمشى',
-                'انصحني', 'تنصحني', 'فكرة', 'افكار',
-            ]
-            is_search = any(kw in user_message for kw in search_keywords)
-            is_tourism = any(kw in user_message for kw in tourism_keywords)
-            
-            if is_tourism:
-                tool_choice = {"type": "function", "function": {"name": "build_daily_plan"}}
-            elif is_search:
-                tool_choice = {"type": "function", "function": {"name": "combined_search"}}
-            else:
-                tool_choice = "auto"
-            logger.info(f"[AGENT-WA] is_search={is_search} | is_tourism={is_tourism} | tool_choice={tool_choice}")
+            # النموذج يقرر بنفسه متى يستخدم الأداة بناء على سياق المحادثة
+            logger.info(f"[AGENT-WA] Processing message with auto tool_choice")
             
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=TOOLS,
-                tool_choice=tool_choice,
+                tool_choice="auto",
                 temperature=temperature,
                 max_tokens=max_tokens
             )
@@ -394,8 +360,37 @@ class DhibanAgent:
                     if google_result:
                         result = format_google_results(google_result, q)
                 
-                logger.info(f"[AGENT-WA] Final result to WhatsApp: {repr(result[:300])}")
-                return result
+                # إعادة إرسال نتيجة الأداة لـ OpenAI ليصيغها بأسلوبه الودي
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [{
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    }]
+                })
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result
+                })
+                
+                final_response = self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
+                bot_response = final_response.choices[0].message.content
+                logger.info(f"[AGENT-WA] Formatted response: {repr(str(bot_response)[:300])}")
+                
+                if not bot_response:
+                    bot_response = result
+                return bot_response
             
             bot_response = assistant_message.content
             logger.info(f"[AGENT-WA] Direct OpenAI (no tool): {repr(str(bot_response)[:200])}")
