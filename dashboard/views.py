@@ -556,3 +556,79 @@ def agent_settings(request):
         'google_configured': bool(os.environ.get('GOOGLE_MAPS_API_KEY')),
         'whatsapp_configured': bool(os.environ.get('WHATSAPP_ACCESS_TOKEN')),
     })
+
+
+@staff_member_required
+def diag_test_vision(request):
+    """صفحة تشخيص تحليل الصور — تختبر كل خطوة في السلسلة"""
+    import json as json_mod
+    import traceback
+
+    if request.method == 'GET':
+        html = """
+        <html dir="rtl"><body style="font-family:monospace;padding:20px;">
+        <h2>🔍 اختبار تحليل الصور (OpenAI Vision)</h2>
+        <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{csrf}">
+            <p><label>ارفع صورة للاختبار:</label><br>
+            <input type="file" name="image" accept="image/*" required></p>
+            <button type="submit" style="padding:10px 20px;font-size:16px;">🧪 اختبر التحليل</button>
+        </form>
+        </body></html>
+        """.format(csrf=request.META.get('CSRF_COOKIE', ''))
+        from django.middleware.csrf import get_token
+        get_token(request)
+        html = html.replace('{csrf}', get_token(request))
+        return HttpResponse(html)
+
+    # POST: test image analysis
+    results = []
+    try:
+        # Step 1: Check OpenAI key
+        api_key = os.environ.get('OPENAI_API_KEY', '')
+        results.append(f"✅ OPENAI_API_KEY set: {bool(api_key)} (len={len(api_key)})")
+
+        # Step 2: Check client
+        from ai_agent.media import _client, analyze_image_from_base64
+        results.append(f"✅ OpenAI client initialized: {_client is not None}")
+
+        if not _client:
+            results.append("❌ OpenAI client is None — API key missing at import time!")
+            return HttpResponse('<br>'.join(results), content_type='text/html')
+
+        # Step 3: Read uploaded image
+        image_file = request.FILES.get('image')
+        if not image_file:
+            results.append("❌ No image uploaded")
+            return HttpResponse('<br>'.join(results), content_type='text/html')
+
+        import base64 as b64mod
+        image_bytes = image_file.read()
+        image_base64 = b64mod.b64encode(image_bytes).decode('utf-8')
+        mime_type = image_file.content_type or 'image/jpeg'
+        results.append(f"✅ Image read: {image_file.name}, size={len(image_bytes)} bytes, mime={mime_type}, base64_len={len(image_base64)}")
+
+        # Step 4: Call analyze
+        results.append("⏳ Calling analyze_image_from_base64...")
+        analysis = analyze_image_from_base64(image_base64, mime_type)
+
+        if analysis:
+            results.append(f"✅ Analysis SUCCESS!")
+            results.append(f"📦 Product: {analysis.get('product_name_ar', 'N/A')}")
+            results.append(f"🏪 Category: {analysis.get('category', 'N/A')}")
+            results.append(f"🔍 Search: {analysis.get('search_query', 'N/A')}")
+            results.append(f"📝 Description: {analysis.get('description', 'N/A')}")
+            results.append(f"<br>Full result:<br><pre>{json_mod.dumps(analysis, ensure_ascii=False, indent=2)}</pre>")
+        else:
+            results.append("❌ Analysis returned None — check server logs for [MEDIA] errors")
+
+    except Exception as e:
+        results.append(f"❌ Exception: {type(e).__name__}: {e}")
+        results.append(f"<pre>{traceback.format_exc()}</pre>")
+
+    html = f"""<html dir="rtl"><body style="font-family:monospace;padding:20px;">
+    <h2>🔍 نتائج اختبار تحليل الصور</h2>
+    {'<br>'.join(results)}
+    <br><br><a href="?">⬅️ رجوع</a>
+    </body></html>"""
+    return HttpResponse(html)

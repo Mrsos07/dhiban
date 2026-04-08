@@ -40,4 +40,7 @@ urlpatterns = [
     path('whatsapp/disconnect/', views.whatsapp_disconnect, name='whatsapp_disconnect'),
     path('whatsapp/status/', views.whatsapp_status_api, name='whatsapp_status'),
     path('whatsapp/set-webhook/', views.whatsapp_set_webhook, name='whatsapp_set_webhook'),
+    
+    # Diagnostics
+    path('diag/test-vision/', views.diag_test_vision, name='diag_test_vision'),
 ]

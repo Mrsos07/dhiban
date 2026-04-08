@@ -418,7 +418,10 @@ class DhibanAgent:
         3. إرسال النتيجة مع رابط الموقع
         """
         try:
-            logger.info(f"[AGENT] Processing image from user {user_id}")
+            logger.info(f"[AGENT] Processing image from user {user_id}, "
+                       f"has_url={bool(image_url)}, has_base64={bool(image_base64)}, "
+                       f"base64_len={len(image_base64) if image_base64 else 0}, "
+                       f"mime={mime_type}, caption='{caption[:50] if caption else ''}'")
             
             # حفظ رسالة المستخدم
             img_text = caption if caption else "📸 [صورة]"
@@ -426,12 +429,19 @@ class DhibanAgent:
             
             # تحليل الصورة
             analysis = None
-            if image_url:
-                analysis = analyze_image_from_url(image_url)
-            elif image_base64:
+            if image_base64:
+                logger.info(f"[AGENT] Calling analyze_image_from_base64 (len={len(image_base64)})")
                 analysis = analyze_image_from_base64(image_base64, mime_type)
+                logger.info(f"[AGENT] analyze_image_from_base64 returned: {type(analysis)} = {repr(analysis)[:200] if analysis else 'None'}")
+            elif image_url:
+                logger.info(f"[AGENT] Calling analyze_image_from_url: {image_url[:100]}")
+                analysis = analyze_image_from_url(image_url)
+                logger.info(f"[AGENT] analyze_image_from_url returned: {type(analysis)} = {repr(analysis)[:200] if analysis else 'None'}")
+            else:
+                logger.error(f"[AGENT] No image_base64 or image_url provided!")
             
             if not analysis:
+                logger.error(f"[AGENT] Image analysis returned None for user {user_id}")
                 response = "ما قدرت أحلل الصورة 😕\nجرب ترسل صورة أوضح أو اكتب لي وش تبي!"
                 self._save_message(user_id, 'bot', response)
                 return response

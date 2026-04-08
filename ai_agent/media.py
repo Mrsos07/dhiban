@@ -118,17 +118,47 @@ def analyze_image_from_base64(image_base64: str, mime_type: str = "image/jpeg") 
         dict مع معلومات المنتج أو None
     """
     if not _client:
-        logger.error("OpenAI client not configured for image analysis")
+        logger.error("[MEDIA] OpenAI client not configured for image analysis")
+        return None
+    
+    if not image_base64:
+        logger.error("[MEDIA] Empty base64 string received")
         return None
     
     try:
-        # تنظيف base64
-        if "base64," in image_base64:
-            image_base64 = image_base64.split("base64,")[1]
+        import json as json_mod
         
-        data_url = f"data:{mime_type};base64,{image_base64}"
+        # تنظيف base64 — إزالة أي prefix مثل data:image/jpeg;base64,
+        clean_base64 = image_base64
+        if "base64," in clean_base64:
+            clean_base64 = clean_base64.split("base64,")[1]
         
-        logger.info(f"[MEDIA] Analyzing image from base64 (type: {mime_type})")
+        # إزالة whitespace و newlines
+        clean_base64 = clean_base64.strip().replace('\n', '').replace('\r', '').replace(' ', '')
+        
+        logger.info(f"[MEDIA] Base64 length: {len(clean_base64)}, first 50 chars: {clean_base64[:50]}")
+        
+        # التحقق من صحة base64
+        try:
+            test_decode = base64.b64decode(clean_base64[:100] + '==')
+            logger.info(f"[MEDIA] Base64 validation OK, decoded sample: {len(test_decode)} bytes")
+        except Exception as e:
+            logger.error(f"[MEDIA] Base64 validation FAILED: {e}")
+            # محاولة إصلاح base64 padding
+            padding = 4 - len(clean_base64) % 4
+            if padding != 4:
+                clean_base64 += '=' * padding
+                logger.info(f"[MEDIA] Added {padding} padding chars")
+        
+        # تحديد mime_type إذا كان غريب
+        if ';' in mime_type:
+            mime_type = mime_type.split(';')[0].strip()
+        if not mime_type or mime_type == 'application/octet-stream':
+            mime_type = 'image/jpeg'
+        
+        data_url = f"data:{mime_type};base64,{clean_base64}"
+        
+        logger.info(f"[MEDIA] Sending to OpenAI Vision (model=gpt-4o, mime={mime_type}, data_url_len={len(data_url)})")
         
         response = _client.chat.completions.create(
             model="gpt-4o",
@@ -141,7 +171,7 @@ def analyze_image_from_base64(image_base64: str, mime_type: str = "image/jpeg") 
                             "type": "image_url",
                             "image_url": {
                                 "url": data_url,
-                                "detail": "high"
+                                "detail": "low"
                             }
                         }
                     ]
@@ -152,21 +182,33 @@ def analyze_image_from_base64(image_base64: str, mime_type: str = "image/jpeg") 
         )
         
         result_text = response.choices[0].message.content.strip()
-        logger.info(f"[MEDIA] Vision response: {result_text[:200]}")
+        logger.info(f"[MEDIA] Vision raw response: {result_text[:500]}")
         
-        # تنظيف JSON
-        if result_text.startswith("```"):
-            result_text = result_text.split("\n", 1)[1] if "\n" in result_text else result_text[3:]
-            if result_text.endswith("```"):
-                result_text = result_text[:-3]
-            result_text = result_text.strip()
+        # تنظيف JSON من markdown code blocks
+        cleaned = result_text
+        if cleaned.startswith("```"):
+            # إزالة السطر الأول (```json أو ```)
+            lines = cleaned.split("\n")
+            cleaned = "\n".join(lines[1:])
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            cleaned = cleaned.strip()
         
-        import json
-        result = json.loads(result_text)
+        # محاولة إيجاد JSON في النص حتى لو كان محاط بنص عادي
+        if not cleaned.startswith('{'):
+            start = cleaned.find('{')
+            end = cleaned.rfind('}')
+            if start != -1 and end != -1:
+                cleaned = cleaned[start:end+1]
+        
+        logger.info(f"[MEDIA] Cleaned JSON: {cleaned[:300]}")
+        
+        result = json_mod.loads(cleaned)
+        logger.info(f"[MEDIA] Analysis result: product={result.get('product_name_ar', 'N/A')}, category={result.get('category', 'N/A')}")
         return result
         
     except Exception as e:
-        logger.error(f"[MEDIA] Image analysis (base64) error: {e}", exc_info=True)
+        logger.error(f"[MEDIA] Image analysis (base64) error: {type(e).__name__}: {e}", exc_info=True)
         return None
 
 
