@@ -340,7 +340,7 @@ def format_google_results(places: List[Dict], query: str = "") -> str:
         if open_status:
             response += f"   🕐 {open_status}\n"
         if maps_url:
-            response += f"   🗺️ {maps_url}\n"
+            response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
         response += "\n"
     
     response += "تبي شي ثاني؟ 🐺"
@@ -438,7 +438,7 @@ def format_supplier_response(supplier: Dict) -> str:
     # رابط الخريطة دائماً موجود
     maps_url = build_maps_url(supplier)
     if maps_url:
-        response += f"   🗺️ {maps_url}\n"
+        response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
     
     return response.strip()
 
@@ -546,7 +546,7 @@ def build_daily_plan(
             if address:
                 response += f"   🏠 {address}\n"
             if maps_url:
-                response += f"   🗺️ {maps_url}\n"
+                response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
         else:
             response += f"   📍 ابحث عن أفضل {activity_info['label']} في عنيزة\n"
         
