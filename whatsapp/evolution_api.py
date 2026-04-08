@@ -103,8 +103,6 @@ class EvolutionAPI:
                 'url': webhook_url,
                 'webhook_by_events': False,
                 'webhook_base64': True,
-                'webhookByEvents': False,
-                'webhookBase64': True,
                 'events': [
                     'MESSAGES_UPSERT',
                     'MESSAGES_UPDATE',
@@ -318,14 +316,13 @@ class EvolutionAPI:
 
     def set_webhook(self, webhook_url: str) -> Dict:
         """تعيين webhook URL مع تفعيل base64 لاستقبال الوسائط"""
-        # نرسل كلا الصيغتين (camelCase و snake_case) للتوافق مع جميع إصدارات Evolution API
-        payload = {
+        # Evolution API v2.3.x يتطلب الحقول ملفوفة داخل "webhook" object
+        # بدونه يرجع 400: "instance requires property webhook"
+        webhook_config = {
             'enabled': True,
             'url': webhook_url,
             'webhook_by_events': False,
             'webhook_base64': True,
-            'webhookByEvents': False,
-            'webhookBase64': True,
             'events': [
                 'MESSAGES_UPSERT',
                 'MESSAGES_UPDATE',
@@ -333,10 +330,25 @@ class EvolutionAPI:
                 'QRCODE_UPDATED',
             ],
         }
-        logger.info(f"[EVOLUTION-API] Setting webhook: {webhook_url}, base64=True")
+        
+        # الصيغة الصحيحة لـ v2.3.x: ملفوفة في webhook object
+        payload = {'webhook': webhook_config}
+        
+        logger.info(f"[EVOLUTION-API] Setting webhook (wrapped format): {webhook_url}, base64=True")
         result = self._post(f'/webhook/set/{self.instance_name}', payload)
-        if not result.get('success'):
-            logger.error(f"[EVOLUTION-API] set_webhook failed: {result.get('error')} | body={result.get('body')}")
+        
+        if result.get('success'):
+            logger.info(f"[EVOLUTION-API] Webhook set successfully!")
+            return result
+        
+        # إذا فشلت الصيغة الملفوفة، جرب الصيغة المباشرة (لإصدارات أحدث)
+        logger.warning(f"[EVOLUTION-API] Wrapped format failed, trying flat format...")
+        result2 = self._post(f'/webhook/set/{self.instance_name}', webhook_config)
+        if result2.get('success'):
+            logger.info(f"[EVOLUTION-API] Webhook set with flat format!")
+            return result2
+        
+        logger.error(f"[EVOLUTION-API] Both webhook formats failed! wrapped={result.get('error')} flat={result2.get('error')}")
         return result
 
     # ─── Helpers ───────────────────────────────────────────────────────────────
