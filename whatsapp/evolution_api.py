@@ -101,6 +101,8 @@ class EvolutionAPI:
             payload['webhook'] = {
                 'enabled': True,
                 'url': webhook_url,
+                'webhook_by_events': False,
+                'webhook_base64': True,
                 'webhookByEvents': False,
                 'webhookBase64': True,
                 'events': [
@@ -250,35 +252,78 @@ class EvolutionAPI:
 
     # ─── Media ───────────────────────────────────────────────────────────────────
 
-    def download_media_base64(self, message_key_id: str) -> Optional[str]:
+    def download_media_base64(self, message_key_id: str, remote_jid: str = '') -> Optional[str]:
         """
         تحميل وسائط من Evolution API وإرجاعها كـ base64.
-        يستخدم endpoint: GET /chat/getBase64FromMediaMessage/{instance}
+        endpoint: POST /chat/getBase64FromMediaMessage/{instance}
+        
+        Per API docs, payload must be: { "message": { "key": { "id": "..." } } }
         """
+        # الصيغة الصحيحة حسب التوثيق الرسمي v2
+        key_obj = {'id': message_key_id}
+        if remote_jid:
+            key_obj['remoteJid'] = remote_jid
+        
         payload = {
-            'key': {
-                'id': message_key_id,
+            'message': {
+                'key': key_obj,
             },
             'convertToMp4': False,
         }
+        
+        logger.info(f"[EVOLUTION-API] Downloading media base64 for message {message_key_id}")
         result = self._post(
             f'/chat/getBase64FromMediaMessage/{self.instance_name}',
             payload
         )
+        
         if result.get('success'):
             data = result.get('data', {})
             # Evolution API يعيد: { "base64": "...", "mimetype": "..." }
-            return data.get('base64', '')
-        logger.error(f"Failed to download media base64: {result.get('error')}")
+            b64 = data.get('base64', '')
+            if b64:
+                logger.info(f"[EVOLUTION-API] Got media base64, length={len(b64)}")
+                return b64
+            # بعض الإصدارات تعيد مباشرة كـ string
+            if isinstance(data, str) and len(data) > 100:
+                logger.info(f"[EVOLUTION-API] Got media base64 as direct string, length={len(data)}")
+                return data
+        
+        logger.error(f"[EVOLUTION-API] Failed to download media base64: {result.get('error', 'unknown')} | status={result.get('status')}")
+        
+        # محاولة ثانية بالصيغة القديمة (بدون message wrapper)
+        payload_old = {
+            'key': {'id': message_key_id},
+            'convertToMp4': False,
+        }
+        if remote_jid:
+            payload_old['key']['remoteJid'] = remote_jid
+        
+        logger.info(f"[EVOLUTION-API] Retrying with old payload format...")
+        result2 = self._post(
+            f'/chat/getBase64FromMediaMessage/{self.instance_name}',
+            payload_old
+        )
+        if result2.get('success'):
+            data2 = result2.get('data', {})
+            b64 = data2.get('base64', '')
+            if b64:
+                logger.info(f"[EVOLUTION-API] Got media base64 (old format), length={len(b64)}")
+                return b64
+        
+        logger.error(f"[EVOLUTION-API] Both download attempts failed for message {message_key_id}")
         return None
 
     # ─── Webhook Setup ──────────────────────────────────────────────────────────
 
     def set_webhook(self, webhook_url: str) -> Dict:
         """تعيين webhook URL مع تفعيل base64 لاستقبال الوسائط"""
+        # نرسل كلا الصيغتين (camelCase و snake_case) للتوافق مع جميع إصدارات Evolution API
         payload = {
             'enabled': True,
             'url': webhook_url,
+            'webhook_by_events': False,
+            'webhook_base64': True,
             'webhookByEvents': False,
             'webhookBase64': True,
             'events': [
@@ -288,7 +333,11 @@ class EvolutionAPI:
                 'QRCODE_UPDATED',
             ],
         }
-        return self._post(f'/webhook/set/{self.instance_name}', payload)
+        logger.info(f"[EVOLUTION-API] Setting webhook: {webhook_url}, base64=True")
+        result = self._post(f'/webhook/set/{self.instance_name}', payload)
+        if not result.get('success'):
+            logger.error(f"[EVOLUTION-API] set_webhook failed: {result.get('error')} | body={result.get('body')}")
+        return result
 
     # ─── Helpers ───────────────────────────────────────────────────────────────
 

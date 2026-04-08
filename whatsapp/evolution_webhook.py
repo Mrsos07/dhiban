@@ -137,12 +137,35 @@ def extract_evolution_message(data: dict) -> dict:
         # اكتشاف الوسائط (صور، صوت)
         media_info = _detect_media_type(message_obj)
 
-        # بعض إصدارات Evolution API ترسل base64 في مستوى الـ raw data
-        if media_info and not media_info.get('base64'):
-            raw_base64 = raw.get('base64', '')
-            if raw_base64:
-                media_info['base64'] = raw_base64
-                logger.info(f"[EVOLUTION] Found base64 in raw data level for {media_info['media_type']}")
+        if media_info:
+            # حفظ remote_jid لاستخدامه في تحميل الوسائط
+            media_info['remote_jid'] = remote_jid
+            
+            # فحص base64 في عدة أماكن محتملة
+            if not media_info.get('base64'):
+                # 1. في مستوى raw data
+                raw_base64 = raw.get('base64', '')
+                if raw_base64:
+                    media_info['base64'] = raw_base64
+                    logger.info(f"[EVOLUTION] Found base64 in raw data level")
+            
+            if not media_info.get('base64'):
+                # 2. في مستوى data الأعلى
+                top_base64 = data.get('base64', '')
+                if top_base64:
+                    media_info['base64'] = top_base64
+                    logger.info(f"[EVOLUTION] Found base64 in top data level")
+            
+            # تسجيل مفصل للتشخيص
+            logger.info(f"[EVOLUTION] Media detected: type={media_info['media_type']}, "
+                       f"has_base64={bool(media_info.get('base64'))}, "
+                       f"has_url={bool(media_info.get('url'))}, "
+                       f"message_id={message_id}, "
+                       f"remote_jid={remote_jid}")
+            
+            # تسجيل مفاتيح الـ payload للتشخيص
+            logger.info(f"[EVOLUTION] Raw keys: {list(raw.keys())}")
+            logger.info(f"[EVOLUTION] Message keys: {list(message_obj.keys())}")
 
         # رسالة وسائط (صورة أو صوت) — الأولوية للوسائط حتى لو يوجد caption نصي
         if media_info:
@@ -261,31 +284,33 @@ def process_evolution_message(msg: dict):
             # ثلاث طرق للحصول على الصورة بالترتيب:
             image_base64 = media.get('base64', '')  # 1. من الـ webhook مباشرة (إذا base64=true)
             image_url = media.get('url', '')
+            remote_jid = media.get('remote_jid', '')
 
             # 2. إذا لم يوجد base64 في الـ payload، حمّله عبر Evolution API
             if not image_base64 and message_id:
-                logger.info(f"[EVOLUTION] No inline base64, downloading via API for message {message_id}")
-                image_base64 = evolution_api.download_media_base64(message_id)
+                logger.info(f"[EVOLUTION] No inline base64, downloading via API for message {message_id}, jid={remote_jid}")
+                image_base64 = evolution_api.download_media_base64(message_id, remote_jid=remote_jid)
                 if image_base64:
                     logger.info(f"[EVOLUTION] Downloaded image base64 via API, length={len(image_base64)}")
                 else:
                     logger.warning(f"[EVOLUTION] Failed to download image via API for message {message_id}")
+            
+            # 3. إذا يوجد URL ولا يوجد base64، حمّل من URL مباشرة
+            if not image_base64 and image_url:
+                logger.info(f"[EVOLUTION] Trying to download image from URL directly")
+                try:
+                    from ai_agent.media import download_image_as_base64
+                    image_base64 = download_image_as_base64(image_url)
+                    if image_base64:
+                        logger.info(f"[EVOLUTION] Downloaded image from URL, length={len(image_base64)}")
+                except Exception as e:
+                    logger.error(f"[EVOLUTION] URL download failed: {e}")
 
             if image_base64:
                 logger.info(f"[EVOLUTION] Processing image with base64 (length={len(image_base64)})")
                 response = dhiban_agent.process_image_message(
                     user_id=phone_number,
                     image_base64=image_base64,
-                    mime_type=media.get('mime_type', 'image/jpeg'),
-                    caption=media.get('caption', ''),
-                    chat_history=history_clean
-                )
-            elif image_url:
-                # 3. تحميل من URL مباشرة
-                logger.info(f"[EVOLUTION] Processing image with URL: {image_url[:100]}")
-                response = dhiban_agent.process_image_message(
-                    user_id=phone_number,
-                    image_url=image_url,
                     mime_type=media.get('mime_type', 'image/jpeg'),
                     caption=media.get('caption', ''),
                     chat_history=history_clean
@@ -303,10 +328,21 @@ def process_evolution_message(msg: dict):
 
             audio_base64 = media.get('base64', '')
             audio_url = media.get('url', '')
+            remote_jid = media.get('remote_jid', '')
 
             if not audio_base64 and message_id:
                 logger.info(f"[EVOLUTION] No inline base64 audio, downloading via API")
-                audio_base64 = evolution_api.download_media_base64(message_id)
+                audio_base64 = evolution_api.download_media_base64(message_id, remote_jid=remote_jid)
+            
+            if not audio_base64 and audio_url:
+                logger.info(f"[EVOLUTION] Trying to download audio from URL directly")
+                try:
+                    import httpx, base64 as b64mod
+                    resp = httpx.get(audio_url, timeout=30, follow_redirects=True)
+                    resp.raise_for_status()
+                    audio_base64 = b64mod.b64encode(resp.content).decode('utf-8')
+                except Exception as e:
+                    logger.error(f"[EVOLUTION] Audio URL download failed: {e}")
 
             if audio_base64:
                 logger.info(f"[EVOLUTION] Processing audio with base64 (length={len(audio_base64)})")
@@ -373,6 +409,21 @@ def evolution_webhook_handler(request):
             data = json.loads(body)
             event = data.get('event', 'unknown')
             logger.info(f"Evolution webhook: event={event}, instance={data.get('instance', '')}")
+
+            # تسجيل تفاصيل payload الوسائط للتشخيص
+            raw_data = data.get('data', {})
+            if isinstance(raw_data, dict):
+                msg_obj = raw_data.get('message', {})
+                if any(k in msg_obj for k in ['imageMessage', 'audioMessage', 'videoMessage']):
+                    logger.info(f"[EVOLUTION-RAW] Media webhook received!")
+                    logger.info(f"[EVOLUTION-RAW] data keys: {list(raw_data.keys())}")
+                    logger.info(f"[EVOLUTION-RAW] message keys: {list(msg_obj.keys())}")
+                    if 'imageMessage' in msg_obj:
+                        img_keys = list(msg_obj['imageMessage'].keys())
+                        logger.info(f"[EVOLUTION-RAW] imageMessage keys: {img_keys}")
+                        logger.info(f"[EVOLUTION-RAW] has base64 in imageMessage: {'base64' in img_keys}")
+                    logger.info(f"[EVOLUTION-RAW] has base64 in data: {'base64' in raw_data}")
+                    logger.info(f"[EVOLUTION-RAW] has base64 in top: {'base64' in data}")
 
             msg = extract_evolution_message(data)
 
