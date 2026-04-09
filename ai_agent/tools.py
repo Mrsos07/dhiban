@@ -343,7 +343,7 @@ def format_google_results(places: List[Dict], query: str = "") -> str:
         if open_status:
             response += f"   🕐 {open_status}\n"
         if maps_url:
-            response += f"   🗺️ الموقع: {maps_url}\n"
+            response += f"   🗺️ الموقع:\n{maps_url}\n"
         response += "\n"
     
     response += "تبي شي ثاني؟ 🐺"
@@ -396,23 +396,27 @@ def get_categories() -> List[Dict]:
 
 
 def build_maps_url(supplier: Dict) -> str:
-    """بناء رابط Google Maps قصير — يفضّل الإحداثيات دائماً لأنها أقصر"""
-    # 1. إحداثيات lat/lng — أقصر رابط ممكن
+    """
+    بناء رابط Google Maps يعمل بشكل صحيح في واتساب.
+    الأولوية: googleMapsUri > إحداثيات > بحث بالاسم.
+    يستخدم الصيغة الرسمية: https://www.google.com/maps/search/?api=1&query=...
+    """
+    import urllib.parse
+    # 1. رابط Google Maps الرسمي من API (أفضل خيار — يفتح المكان مباشرة)
+    url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
+    if url and url.startswith('http'):
+        return url
+    # 2. إحداثيات lat/lng — رابط رسمي يعمل في واتساب
     loc = supplier.get('location', {})
     lat = loc.get('lat') if isinstance(loc, dict) else None
     lng = loc.get('lng') if isinstance(loc, dict) else None
     if lat and lng:
-        return f"https://maps.google.com/?q={lat},{lng}"
-    # 2. رابط مباشر من قاعدة البيانات أو Google
-    url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
-    if url:
-        return url
+        return f"https://www.google.com/maps/search/?api=1&query={lat},{lng}"
     # 3. fallback — بحث بالاسم
     name = supplier.get('name', '')
     if name:
-        import urllib.parse
         query = urllib.parse.quote(f"{name} عنيزة")
-        return f"https://maps.google.com/maps?q={query}"
+        return f"https://www.google.com/maps/search/?api=1&query={query}"
     return ''
 
 
@@ -438,10 +442,10 @@ def format_supplier_response(supplier: Dict) -> str:
         status = "✅ مفتوح" if supplier['is_open'] else "❌ مغلق"
         response += f"   🕐 {status}\n"
     
-    # رابط الخريطة دائماً موجود
+    # رابط الخريطة — على سطر منفصل لكي يعمل في واتساب
     maps_url = build_maps_url(supplier)
     if maps_url:
-        response += f"   🗺️ الموقع: {maps_url}\n"
+        response += f"   🗺️ الموقع:\n{maps_url}\n"
     
     return response.strip()
 
@@ -549,7 +553,7 @@ def build_daily_plan(
             if address:
                 response += f"   🏠 {address}\n"
             if maps_url:
-                response += f"   🗺️ الموقع: {maps_url}\n"
+                response += f"   🗺️ الموقع:\n{maps_url}\n"
         else:
             response += f"   📍 ابحث عن أفضل {activity_info['label']} في عنيزة\n"
         

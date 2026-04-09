@@ -52,7 +52,7 @@ class WhatsAppAPI:
             "to": recipient,
             "type": "text",
             "text": {
-                "preview_url": False,
+                "preview_url": True,
                 "body": message
             }
         }

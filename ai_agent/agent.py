@@ -574,7 +574,7 @@ class DhibanAgent:
             if is_open is not None:
                 result += f"   🕐 {'✅ مفتوح الحين' if is_open else '❌ مغلق الحين'}\n"
             if maps_url:
-                result += f"   🗺️ الموقع: {maps_url}\n"
+                result += f"   🗺️ الموقع:\n{maps_url}\n"
             result += "\n"
         
         result += "تبي شي ثاني يالغالي؟ 🐺"
