@@ -412,10 +412,12 @@ class DhibanAgent:
         chat_history: List[Dict] = None
     ) -> str:
         """
-        معالجة صورة من المستخدم:
+        معالجة صورة من المستخدم — بأسلوب محادثاتي:
         1. تحليل الصورة بـ OpenAI Vision للتعرف على المنتج
-        2. البحث عن أقرب مكان يبيعه في عنيزة عبر Google Maps
-        3. إرسال النتيجة مع رابط الموقع
+        2. وصف المنتج بشكل ودي وسؤال العميل إذا يبي يبحث
+        3. إذا العميل قال ابحث → يبحث في عنيزة فقط بأعلى تقييم
+        
+        ⚠️ لا يبحث تلقائياً — يسأل العميل أول!
         """
         try:
             logger.info(f"[AGENT] Processing image from user {user_id}, "
@@ -442,71 +444,141 @@ class DhibanAgent:
             
             if not analysis:
                 logger.error(f"[AGENT] Image analysis returned None for user {user_id}")
-                response = "ما قدرت أحلل الصورة 😕\nجرب ترسل صورة أوضح أو اكتب لي وش تبي!"
+                response = "يالغالي ما قدرت أوضح الصورة 😕\nجرب ترسل صورة أوضح أو اكتب لي وش تبي!"
                 self._save_message(user_id, 'bot', response)
                 return response
             
-            # إذا ليس منتج
+            # ═══ إذا ليس منتج (أكل، مكان، طبيعة، شخص) ═══
             if analysis.get('is_product') is False:
-                desc = analysis.get('description', 'صورة')
-                response = f"📸 شفت الصورة! 🐺\n{desc}\n\nإذا تبي تسألني عن منتج، أرسل لي صورته!"
+                desc = analysis.get('description', 'صورة حلوة')
+                image_type = analysis.get('image_type', 'other')
+                
+                # رد محادثاتي حسب نوع الصورة
+                if image_type == 'food':
+                    response = f"يا سلام! 😋 شكله لذيذ!\n{desc}\n\nتبي أدلك على مطعم يسوي زيه في عنيزة؟ 🐺"
+                elif image_type == 'place':
+                    response = f"📸 مكان حلو ما شاء الله!\n{desc}\n\nتبي أوريك أماكن زي كذا في عنيزة؟ 😊"
+                elif image_type == 'nature':
+                    response = f"📸 ما شاء الله منظر يريح النفس!\n{desc}\n\nتبي أقترح لك أماكن طبيعة حلوة في عنيزة؟ 🌿"
+                else:
+                    response = f"📸 شفت الصورة يالغالي!\n{desc}\n\nإذا تبي تسألني عن شي أو تبي أبحث لك، قل لي وابشر! 🐺"
+                
                 self._save_message(user_id, 'bot', response)
                 return response
             
-            # بناء الرد الأولي
+            # ═══ منتج → وصف + سؤال (لا نبحث مباشرة!) ═══
             product_ar = analysis.get('product_name_ar', 'منتج')
+            brand = analysis.get('brand', '')
             category = analysis.get('category', '')
             description = analysis.get('description', '')
             search_query = analysis.get('search_query', '')
             place_type = analysis.get('google_place_type', '')
+            price_range = analysis.get('estimated_price_range', '')
             
-            response = f"📸 تعرفت على الصورة! 🐺\n\n"
-            response += f"📦 *{product_ar}*\n"
+            # بناء رد محادثاتي يسولف عن المنتج ويسأل
+            response = f"يا حلوه! عرفت الصورة �\n\n"
+            
+            if brand:
+                response += f"📦 *{product_ar}* — {brand}\n"
+            else:
+                response += f"📦 *{product_ar}*\n"
+            
             if description:
-                response += f"📝 {description}\n"
+                response += f"{description}\n"
             
-            # البحث عن أقرب مكان يبيع المنتج
-            if search_query or category:
-                query = search_query or f"{category} في عنيزة"
-                logger.info(f"[AGENT] Searching for product store: {query}")
-                
-                places = search_google_places(
-                    query=query,
-                    place_type=place_type if place_type else None,
-                    limit=3,
-                    save_results=True
+            if price_range:
+                response += f"💰 السعر تقريباً: {price_range}\n"
+            
+            response += f"\n"
+            
+            # ═══ إذا المستخدم أرسل كابشن فيه طلب بحث → ابحث مباشرة ═══
+            caption_lower = caption.strip().lower() if caption else ''
+            search_triggers = ['ابحث', 'وين', 'ابي', 'ابغى', 'دور', 'لقني', 'بحث', 'اقرب', 'مكان']
+            should_search = any(trigger in caption_lower for trigger in search_triggers)
+            
+            if should_search and (search_query or category):
+                # المستخدم طلب بحث في الكابشن → نبحث مباشرة في عنيزة
+                response += self._search_product_in_unaizah(
+                    search_query, category, place_type, product_ar
                 )
-                
-                if places:
-                    response += f"\n🏪 أقرب مكان تلقاه فيه في عنيزة:\n\n"
-                    for i, place in enumerate(places[:2], 1):
-                        name = place.get('name', '')
-                        rating = place.get('rating', 0)
-                        address = place.get('address', '')
-                        maps_url = build_maps_url(place)
-                        
-                        response += f"*{i}. {name}*\n"
-                        if rating:
-                            response += f"   ⭐ {rating}/5\n"
-                        if address:
-                            response += f"   📍 {address}\n"
-                        if maps_url:
-                            response += f"   🗺️ الموقع: {maps_url}\n"
-                        response += "\n"
+            else:
+                # لا نبحث — نسأل العميل أول
+                if category:
+                    response += f"تبي أبحث لك عن *{category}* في عنيزة يبيع هالمنتج بتقييم عالي؟ 😊\n"
                 else:
-                    response += f"\n🏪 تلقاه في: *{category}*\n"
-                    response += "ما لقيت مكان محدد في Google Maps، جرب تبحث عنه يدوياً 😊\n"
-            
-            response += "تبي شي ثاني؟ 🐺"
+                    response += f"تبي أبحث لك عن مكان يبيعه في عنيزة؟ 😊\n"
+                response += "قل لي *ابحث* وابشر! 🐺"
             
             self._save_message(user_id, 'bot', response)
             return response
             
         except Exception as e:
             logger.error(f"[AGENT] Image processing error: {e}", exc_info=True)
-            error_response = "صار خطأ في تحليل الصورة 😕 جرب مرة ثانية!"
+            error_response = "يالغالي صار خطأ بسيط في تحليل الصورة 😕 جرب مرة ثانية!"
             self._save_message(user_id, 'bot', error_response)
             return error_response
+    
+    def _search_product_in_unaizah(
+        self,
+        search_query: str,
+        category: str,
+        place_type: str,
+        product_ar: str
+    ) -> str:
+        """البحث عن مكان يبيع المنتج في عنيزة فقط — مرتب بالتقييم الأعلى"""
+        query = search_query or f"{category} في عنيزة"
+        # التأكد من أن البحث مقيد بعنيزة
+        if 'عنيزة' not in query:
+            query += ' في عنيزة'
+        
+        logger.info(f"[AGENT] Searching for product in Unaizah: {query}")
+        
+        places = search_google_places(
+            query=query,
+            place_type=place_type if place_type else None,
+            limit=5,
+            save_results=True
+        )
+        
+        if not places:
+            return f"بحثت لك في عنيزة بس ما لقيت مكان محدد يبيع *{product_ar}* 😕\nجرب تسأل في *{category}* القريبة منك\n\nتبي شي ثاني؟ 🐺"
+        
+        # ترتيب حسب التقييم (الأعلى أول)
+        places_sorted = sorted(places, key=lambda p: (p.get('rating', 0), p.get('total_ratings', 0)), reverse=True)
+        
+        result = f"لقيت لك أحسن الأماكن في *عنيزة* اللي تبيع هالمنتج:\n\n"
+        
+        for i, place in enumerate(places_sorted[:3], 1):
+            name = place.get('name', '')
+            rating = place.get('rating', 0)
+            total_ratings = place.get('total_ratings', 0)
+            address = place.get('address', '')
+            phone = place.get('phone', '')
+            is_open = place.get('is_open')
+            maps_url = build_maps_url(place)
+            
+            if i == 1:
+                result += f"⭐ *{name}* — أنصحك فيه!\n"
+            else:
+                result += f"*{i}. {name}*\n"
+            
+            if rating:
+                result += f"   ⭐ {rating}/5"
+                if total_ratings:
+                    result += f" ({total_ratings} تقييم)"
+                result += "\n"
+            if address:
+                result += f"   📍 {address}\n"
+            if phone:
+                result += f"   � {phone}\n"
+            if is_open is not None:
+                result += f"   🕐 {'✅ مفتوح الحين' if is_open else '❌ مغلق الحين'}\n"
+            if maps_url:
+                result += f"   🗺️ الموقع: {maps_url}\n"
+            result += "\n"
+        
+        result += "تبي شي ثاني يالغالي؟ 🐺"
+        return result
     
     def process_voice_message(
         self,

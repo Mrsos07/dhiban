@@ -18,33 +18,42 @@ _client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # ─── Image Analysis ─────────────────────────────────────────────────────────
 
-IMAGE_ANALYSIS_PROMPT = """أنت مساعد ذكي متخصص في التعرف على المنتجات والأشياء في الصور.
+IMAGE_ANALYSIS_PROMPT = """أنت خبير ذكي في التعرف على المنتجات والأشياء في الصور.
 
 مهمتك:
-1. حدد بدقة ما هو الشيء/المنتج في الصورة
+1. حدد بدقة ما هو الشيء/المنتج في الصورة — اسمه ونوعه وعلامته التجارية إن وُجدت
 2. أعطِ اسم المنتج بالعربي والإنجليزي
-3. حدد نوع المتجر أو المكان الذي يُباع فيه هذا المنتج (مثل: سوبرماركت، محل إلكترونيات، صيدلية، محل عطور، مكتبة، محل جوالات، إلخ)
-4. أعطِ كلمة بحث مناسبة للبحث عنه في Google Maps
+3. حدد نوع المتجر أو المكان الذي يُباع فيه هذا المنتج في مدينة عنيزة بالقصيم
+4. أعطِ كلمة بحث دقيقة ومحددة للبحث عنه في Google Maps في عنيزة فقط
+5. أعطِ وصف ودي ومختصر للمنتج باللهجة العامية
+
+⚠️ مهم جداً: كل كلمات البحث يجب أن تكون مخصصة لـ "عنيزة" فقط.
 
 أجب بصيغة JSON فقط بدون أي نص إضافي:
 {
+    "is_product": true,
     "product_name_ar": "اسم المنتج بالعربي",
     "product_name_en": "product name in English",
-    "category": "نوع المتجر بالعربي (مثل: سوبرماركت، صيدلية، محل إلكترونيات)",
-    "search_query": "كلمة بحث للبحث في Google Maps عن مكان بيع المنتج في عنيزة",
+    "brand": "العلامة التجارية إن وُجدت أو فارغ",
+    "category": "نوع المتجر بالعربي (مثل: سوبرماركت، صيدلية، محل إلكترونيات، محل جوالات)",
+    "search_query": "كلمة بحث دقيقة للبحث في Google Maps عن مكان بيع المنتج في عنيزة",
     "google_place_type": "نوع المكان في Google مثل: store, pharmacy, supermarket, electronics_store",
-    "description": "وصف مختصر للمنتج بالعربي"
+    "description": "وصف مختصر وودي للمنتج بالعامية",
+    "estimated_price_range": "نطاق سعري تقريبي إن أمكن أو فارغ"
 }
 
-إذا كانت الصورة ليست منتج (مثل: مكان، طبيعة، شخص) أجب:
+إذا كانت الصورة ليست منتج (مثل: أكل، مكان، طبيعة، شخص، حيوان) أجب:
 {
+    "is_product": false,
     "product_name_ar": "",
     "product_name_en": "",
+    "brand": "",
     "category": "",
     "search_query": "",
     "google_place_type": "",
-    "description": "وصف ما تراه في الصورة بالعربي",
-    "is_product": false
+    "description": "وصف ودي ومختصر لما تشوفه في الصورة بالعامية",
+    "estimated_price_range": "",
+    "image_type": "نوع الصورة: food, place, nature, person, animal, other"
 }
 """
 
@@ -348,29 +357,43 @@ def transcribe_audio_bytes(audio_bytes: bytes, mime_type: str = "audio/ogg") -> 
 
 def format_image_analysis_response(analysis: Dict) -> str:
     """
-    تنسيق نتيجة تحليل الصورة كرد للمستخدم
+    تنسيق نتيجة تحليل الصورة كرد محادثاتي — يسأل قبل ما يبحث
     """
     if not analysis:
-        return "ما قدرت أتعرف على الصورة 😕 جرب صورة أوضح!"
+        return "يالغالي ما قدرت أوضح الصورة 😕 جرب صورة أوضح!"
     
     # إذا ليست منتج
     if analysis.get('is_product') is False:
-        desc = analysis.get('description', 'صورة')
-        return f"📸 شفت الصورة!\n{desc}\n\nإذا تبي تسألني عن منتج أو مكان، أرسل لي صورته! 🐺"
+        desc = analysis.get('description', 'صورة حلوة')
+        image_type = analysis.get('image_type', 'other')
+        if image_type == 'food':
+            return f"يا سلام! � شكله لذيذ!\n{desc}\n\nتبي أدلك على مطعم يسوي زيه في عنيزة؟ 🐺"
+        return f"�📸 شفت الصورة يالغالي!\n{desc}\n\nتبي أبحث لك عن شي؟ قل لي وابشر! 🐺"
     
     product_ar = analysis.get('product_name_ar', 'منتج')
+    brand = analysis.get('brand', '')
     category = analysis.get('category', '')
     description = analysis.get('description', '')
+    price_range = analysis.get('estimated_price_range', '')
     
-    response = f"📸 تعرفت على الصورة! 🐺\n\n"
-    response += f"📦 *{product_ar}*\n"
+    response = f"يا حلوه! عرفت الصورة �\n\n"
+    
+    if brand:
+        response += f"📦 *{product_ar}* — {brand}\n"
+    else:
+        response += f"📦 *{product_ar}*\n"
     
     if description:
-        response += f"📝 {description}\n"
+        response += f"{description}\n"
+    
+    if price_range:
+        response += f"💰 السعر تقريباً: {price_range}\n"
     
     if category:
-        response += f"\n🏪 تلقاه في: *{category}*\n"
+        response += f"\nتبي أبحث لك عن *{category}* في عنيزة يبيع هالمنتج بتقييم عالي؟ 😊\n"
+    else:
+        response += f"\nتبي أبحث لك عن مكان يبيعه في عنيزة؟ 😊\n"
     
-    response += "\n⏳ جاري البحث عن أقرب مكان يبيعه في عنيزة..."
+    response += "قل لي *ابحث* وابشر! 🐺"
     
     return response
