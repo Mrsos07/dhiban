@@ -53,20 +53,20 @@ def search_suppliers(
     results = []
     for supplier in queryset:
         import urllib.parse
-        # بناء رابط الموقع — دائماً موجود
+        # بناء رابط الموقع — الإحداثيات أولاً لأنها أقصر
         maps_url = ''
-        if hasattr(supplier, 'google_maps_url') and supplier.google_maps_url:
-            maps_url = supplier.google_maps_url
-        elif supplier.location and supplier.location.get('lat') and supplier.location.get('lng'):
+        if supplier.location and supplier.location.get('lat') and supplier.location.get('lng'):
             lat = supplier.location.get('lat')
             lng = supplier.location.get('lng')
             maps_url = f"https://maps.google.com/?q={lat},{lng}"
+        elif hasattr(supplier, 'google_maps_url') and supplier.google_maps_url:
+            maps_url = supplier.google_maps_url
         else:
             # fallback: بحث بالاسم في عنيزة
             name = supplier.name_ar or supplier.name_en or ''
             if name:
                 q = urllib.parse.quote(f"{name} عنيزة")
-                maps_url = f"https://www.google.com/maps/search/{q}"
+                maps_url = f"https://maps.google.com/maps?q={q}"
         
         results.append({
             'id': str(supplier.id),
@@ -340,7 +340,7 @@ def format_google_results(places: List[Dict], query: str = "") -> str:
         if open_status:
             response += f"   🕐 {open_status}\n"
         if maps_url:
-            response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
+            response += f"   🗺️ الموقع: {maps_url}\n"
         response += "\n"
     
     response += "تبي شي ثاني؟ 🐺"
@@ -393,23 +393,23 @@ def get_categories() -> List[Dict]:
 
 
 def build_maps_url(supplier: Dict) -> str:
-    """بناء رابط Google Maps من أي بيانات متاحة"""
-    # 1. رابط مباشر من قاعدة البيانات
-    url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
-    if url:
-        return url
-    # 2. إحداثيات lat/lng
+    """بناء رابط Google Maps قصير — يفضّل الإحداثيات دائماً لأنها أقصر"""
+    # 1. إحداثيات lat/lng — أقصر رابط ممكن
     loc = supplier.get('location', {})
     lat = loc.get('lat') if isinstance(loc, dict) else None
     lng = loc.get('lng') if isinstance(loc, dict) else None
     if lat and lng:
         return f"https://maps.google.com/?q={lat},{lng}"
-    # 3. بحث بالاسم في عنيزة
+    # 2. رابط مباشر من قاعدة البيانات أو Google
+    url = supplier.get('maps_url') or supplier.get('google_maps_url', '')
+    if url:
+        return url
+    # 3. fallback — بحث بالاسم
     name = supplier.get('name', '')
     if name:
         import urllib.parse
         query = urllib.parse.quote(f"{name} عنيزة")
-        return f"https://www.google.com/maps/search/{query}"
+        return f"https://maps.google.com/maps?q={query}"
     return ''
 
 
@@ -438,7 +438,7 @@ def format_supplier_response(supplier: Dict) -> str:
     # رابط الخريطة دائماً موجود
     maps_url = build_maps_url(supplier)
     if maps_url:
-        response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
+        response += f"   🗺️ الموقع: {maps_url}\n"
     
     return response.strip()
 
@@ -546,7 +546,7 @@ def build_daily_plan(
             if address:
                 response += f"   🏠 {address}\n"
             if maps_url:
-                response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
+                response += f"   🗺️ الموقع: {maps_url}\n"
         else:
             response += f"   📍 ابحث عن أفضل {activity_info['label']} في عنيزة\n"
         

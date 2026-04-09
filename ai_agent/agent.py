@@ -491,7 +491,7 @@ class DhibanAgent:
                         if address:
                             response += f"   📍 {address}\n"
                         if maps_url:
-                            response += f"   🗺️ رابط الموقع:\n   {maps_url}\n"
+                            response += f"   🗺️ الموقع: {maps_url}\n"
                         response += "\n"
                 else:
                     response += f"\n🏪 تلقاه في: *{category}*\n"
