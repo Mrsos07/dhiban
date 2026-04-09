@@ -8,9 +8,12 @@ from django.db.models import Q
 from suppliers.models import Supplier, Category
 from .places import search_nearby_places, get_place_details, format_google_place
 from .intents import (
-    detect_intent, IntentType, should_search_database, should_search_google,
-    is_tourism_intent, needs_followup, get_plan_activities,
-    ACTIVITY_CATEGORIES, PLAN_TEMPLATES, TOURISM_INTENTS
+    detect_intent, IntentType, ConversationState,
+    should_search_database, should_search_google,
+    is_tourism_intent, is_chat_only, is_immediate_search,
+    needs_followup, get_plan_activities,
+    ACTIVITY_CATEGORIES, PLAN_TEMPLATES, TOURISM_INTENTS,
+    CHAT_ONLY_INTENTS, IMMEDIATE_SEARCH_INTENTS,
 )
 
 logger = logging.getLogger(__name__)

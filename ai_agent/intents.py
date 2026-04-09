@@ -1,23 +1,40 @@
 ﻿"""
-نظام النوايا الذكي (Smart Intent Recognition)
-لفهم طلبات المستخدمين باللهجة القصيمية والعربية
+نظام النوايا العالمي (World-Class Intent Recognition)
+لفهم طلبات المستخدمين باللهجة القصيمية والعربية والعامية
+مع نظام محادثة ذكي يسأل ويناقش قبل البحث
 """
 from typing import Dict, List, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 import re
 
 
 class IntentType(Enum):
-    """أنواع النوايا"""
-    # ═══ نوايا سياحية وتخطيط يومي ═══
+    """أنواع النوايا — تصنيف شامل لكل ما يمكن أن يطلبه المستخدم"""
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 💬 نوايا محادثة واجتماعية (الأكثر إنسانية)
+    # ═══════════════════════════════════════════════════════════════
+    GREETING = "greeting"                  # تحية (هلا، السلام عليكم)
+    FAREWELL = "farewell"                  # وداع (مع السلامة، الله يحفظك)
+    GRATITUDE = "gratitude"                # شكر (شكراً، يعطيك العافية)
+    SMALL_TALK = "small_talk"              # سولفة عادية (كيف حالك، وش اخبارك)
+    IDENTITY = "identity"                  # سؤال عن هوية الوكيل (انت مين، وش تسوي)
+    JOKE = "joke"                          # طلب نكتة أو مزاح
+    OPINION = "opinion"                    # طلب رأي (وش رأيك، ايهم احسن)
+    COMPLAINT = "complaint"                # شكوى
+    HELP = "help"                          # طلب مساعدة عامة
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🗺️ نوايا سياحية وتخطيط يومي
+    # ═══════════════════════════════════════════════════════════════
     DAILY_PLAN = "daily_plan"              # طلب خطة يومية كاملة
     ACTIVITY_SUGGESTION = "activity_suggestion"  # اقتراح نشاط (وش اسوي)
     MOOD_BASED = "mood_based"              # طلب بناء على المزاج (ملان، ابي اتسلى)
     EXPLORE = "explore"                    # استكشاف المدينة / وش فيه
-    OUTING_FOOD = "outing_food"            # خروجة أكل (ودي اطلع اتعشى/اتغدى)
-    OUTING_WALK = "outing_walk"            # خروجة تمشية (ودي اتمشى)
-    OUTING_COFFEE = "outing_coffee"        # خروجة قهوة (ودي اشرب قهوة بمكان حلو)
+    OUTING_FOOD = "outing_food"            # خروجة أكل
+    OUTING_WALK = "outing_walk"            # خروجة تمشية
+    OUTING_COFFEE = "outing_coffee"        # خروجة قهوة
     OUTING_FAMILY = "outing_family"        # خروجة عائلية
     OUTING_FRIENDS = "outing_friends"      # طلعة مع الربع
     OUTING_ROMANTIC = "outing_romantic"    # خروجة رومانسية
@@ -27,38 +44,186 @@ class IntentType(Enum):
     MORNING_PLAN = "morning_plan"          # خطة صباحية
     PREFERENCE_RESPONSE = "preference_response"  # رد على سؤال التفضيلات
     
-    # ═══ نوايا البحث والخدمات ═══
-    HUNGRY = "hungry"                      # جوعان - يحتاج سؤال عن نوع الأكل
-    SEARCH_FOOD = "search_food"            # البحث عن مطعم/أكل محدد
-    SEARCH_SERVICE = "search_service"      # البحث عن خدمة (كهربائي سباك)
-    SEARCH_PLACE = "search_place"          # البحث عن مكان (صيدلية، مستشفى)
+    # ═══════════════════════════════════════════════════════════════
+    # 🍽️ نوايا الطعام والشراب
+    # ═══════════════════════════════════════════════════════════════
+    HUNGRY = "hungry"                      # جوعان — يحتاج سؤال عن نوع الأكل
+    THIRSTY = "thirsty"                    # عطشان / ابي مشروب
+    CRAVING = "craving"                    # اشتهي شي معين
+    SEARCH_FOOD = "search_food"            # بحث عن مطعم/أكل محدد
+    SEARCH_CAFE = "search_cafe"            # بحث عن كافيه محدد
+    SEARCH_DESSERT = "search_dessert"      # بحث عن حلويات
+    FOOD_RECOMMENDATION = "food_recommendation"  # وش تنصحني اكل
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🔧 نوايا الخدمات
+    # ═══════════════════════════════════════════════════════════════
+    SEARCH_SERVICE = "search_service"      # بحث عن خدمة (كهربائي، سباك)
+    EMERGENCY_SERVICE = "emergency_service" # خدمة عاجلة (الحين، ضروري)
+    HOME_PROBLEM = "home_problem"          # وصف مشكلة منزلية
+    CAR_PROBLEM = "car_problem"            # مشكلة سيارة
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🏥 نوايا الأماكن والمرافق
+    # ═══════════════════════════════════════════════════════════════
+    SEARCH_PLACE = "search_place"          # بحث عن مكان عام
+    SEARCH_HEALTH = "search_health"        # بحث عن مرفق صحي
+    SEARCH_SHOPPING = "search_shopping"    # بحث عن مكان تسوق
+    SEARCH_EDUCATION = "search_education"  # بحث عن مكان تعليمي
+    SEARCH_RELIGIOUS = "search_religious"  # بحث عن مسجد/جامع
+    SEARCH_GOVERNMENT = "search_government" # بحث عن جهة حكومية
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 📍 نوايا الموقع والتنقل
+    # ═══════════════════════════════════════════════════════════════
     GET_DIRECTIONS = "get_directions"      # طلب اتجاهات
-    GET_BEST = "get_best"                  # طلب الأفضل
-    GREETING = "greeting"                  # تحية
-    HELP = "help"                          # طلب مساعدة
-    FEEDBACK = "feedback"                  # ملاحظات/شكر
-    COMPLAINT = "complaint"                # شكوى
+    NEAREST = "nearest"                    # أقرب مكان
+    GET_BEST = "get_best"                  # أفضل مكان
+    COMPARE = "compare"                    # مقارنة بين مكانين
+    
+    # ═══════════════════════════════════════════════════════════════
+    # ❓ نوايا عامة
+    # ═══════════════════════════════════════════════════════════════
+    INFO_REQUEST = "info_request"          # طلب معلومة عامة عن عنيزة
+    WEATHER = "weather"                    # سؤال عن الطقس
+    TIME_QUERY = "time_query"             # سؤال عن الوقت أو مواعيد
+    PRICE_QUERY = "price_query"           # سؤال عن الأسعار
     UNKNOWN = "unknown"                    # غير معروف
+
+
+# ═══════════════════════════════════════════════════════════════
+# 🤖 نظام المحادثة الذكي — متى نسأل ومتى نبحث
+# ═══════════════════════════════════════════════════════════════
+
+class ConversationState(Enum):
+    """حالة المحادثة — يحدد سلوك الوكيل"""
+    CHAT = "chat"              # سولفة عادية — لا يحتاج بحث
+    NEEDS_CLARIFICATION = "needs_clarification"  # يحتاج سؤال توضيحي قبل البحث
+    READY_TO_SEARCH = "ready_to_search"  # جاهز للبحث — الطلب واضح
+    SHOW_RESULTS = "show_results"  # عرض النتائج
 
 
 @dataclass
 class Intent:
-    """كائن النية"""
+    """كائن النية — يحمل كل المعلومات عن طلب المستخدم"""
     type: IntentType
     confidence: float
     entities: Dict
     original_text: str
-    use_google: bool = False  # هل يجب استخدام Google Maps
-    needs_followup: bool = False  # هل يحتاج سؤال متابعة لمعرفة التفضيلات
-    plan_type: str = ''  # نوع الخطة المطلوبة (daily/evening/morning/weekend)
+    use_google: bool = False
+    needs_followup: bool = False
+    plan_type: str = ''
+    conversation_state: ConversationState = ConversationState.CHAT
+    clarification_questions: List[str] = field(default_factory=list)
+    urgency: str = 'normal'  # normal, urgent, emergency
+    companion: str = ''  # alone, family, friends, romantic, kids
+    time_preference: str = ''  # morning, evening, now, weekend
 
 
-# الكلمات القصيمية والعربية لكل نية
+# الكلمات القصيمية والعربية لكل نية — شامل ومتنوع
 INTENT_PATTERNS = {
+    # ═══════════════════════════════════════════════════════════════
+    # 💬 نوايا محادثة واجتماعية
+    # ═══════════════════════════════════════════════════════════════
     IntentType.GREETING: {
-        'keywords': ['مرحبا', 'السلام', 'هلا', 'اهلا', 'صباح', 'مساء', 'هاي', 'ابدأ'],
-        'patterns': [r'^هلا+$', r'^السلام عليكم', r'^مرحبا?$'],
-        'priority': 10
+        'keywords': [
+            'مرحبا', 'السلام', 'هلا', 'اهلا', 'صباح', 'مساء', 'هاي', 'ابدأ',
+            'يا هلا', 'حياك', 'حيا الله', 'اهلين', 'مرحبتين',
+            'سلام', 'هلو', 'hello', 'hi',
+        ],
+        'patterns': [r'^هلا+$', r'^السلام عليكم', r'^مرحبا?$', r'^حياك', r'^اهلين'],
+        'priority': 10,
+        'state': 'chat',
+    },
+    IntentType.FAREWELL: {
+        'keywords': [
+            'مع السلامة', 'الله يحفظك', 'باي', 'في أمان الله', 'استودعك',
+            'الله يسلمك', 'تصبح على خير', 'يلا باي', 'سلامتك',
+            'مع السلامه', 'في امان الله', 'الله معك',
+        ],
+        'patterns': [r'(مع السلام|باي|في أمان|في امان)', r'(تصبح|يسلمك|يحفظك)'],
+        'priority': 10,
+        'state': 'chat',
+    },
+    IntentType.GRATITUDE: {
+        'keywords': [
+            'شكرا', 'مشكور', 'يعطيك العافية', 'ممتاز', 'رائع', 'حلو', 'تمام',
+            'الله يجزاك خير', 'جزاك الله خير', 'ما قصرت', 'الله يوفقك',
+            'يسلمو', 'تسلم', 'الله يعافيك', 'ابدعت', 'ممتاز', 'عاشت ايدك',
+            'طيب', 'تمام', 'اوكي', 'ok', 'thanks',
+        ],
+        'patterns': [r'^شكرا?$', r'^مشكور', r'يعطيك العافية', r'^تسلم', r'^الله يجزاك'],
+        'priority': 10,
+        'state': 'chat',
+    },
+    IntentType.SMALL_TALK: {
+        'keywords': [
+            'كيف حالك', 'كيفك', 'وش لونك', 'شلونك', 'وش اخبارك',
+            'عساك بخير', 'عساك طيب', 'الحمد لله', 'بخير',
+            'وش مسوي', 'وش تسوي', 'شخبارك', 'لا باس',
+            'كيف الحال', 'شو اخبارك', 'ها وش الاخبار',
+            'انا بخير', 'تمام', 'زين', 'الله يسلمك',
+        ],
+        'patterns': [
+            r'كيف (حالك|الحال)', r'وش (لونك|اخبارك|مسوي)',
+            r'^(بخير|زين|تمام|الحمد)', r'شلونك', r'شخبارك',
+        ],
+        'priority': 10,
+        'state': 'chat',
+    },
+    IntentType.IDENTITY: {
+        'keywords': [
+            'انت مين', 'مين انت', 'وش انت', 'وش تسوي', 'وش تقدر تسوي',
+            'كيف تشتغل', 'وش فايدتك', 'وش خدماتك', 'عرفني بنفسك',
+            'شو بتساعدني', 'كيف تساعدني', 'وش تعرف تسوي',
+        ],
+        'patterns': [
+            r'(انت|إنت) (مين|من|وش|شو)', r'(مين|من) (انت|إنت)',
+            r'(وش|شو) (تقدر|تعرف|بت).*(تسوي|تساعد)',
+        ],
+        'priority': 10,
+        'state': 'chat',
+    },
+    IntentType.JOKE: {
+        'keywords': [
+            'نكتة', 'نكت', 'ضحكني', 'سولف لي', 'قل لي شي حلو',
+            'مزح', 'مزاح', 'هههه', 'خخخخ', 'فله', 'ضحك',
+        ],
+        'patterns': [r'(نكتة|ضحكني|سولف لي)', r'^(هههه|خخخخ)'],
+        'priority': 9,
+        'state': 'chat',
+    },
+    IntentType.OPINION: {
+        'keywords': [
+            'وش رأيك', 'ايش رأيك', 'شو رأيك', 'وش تنصح',
+            'ايهم احسن', 'ايهم افضل', 'ايش الفرق', 'وش الفرق',
+            'المقارنة', 'قارن', 'تفضل',
+        ],
+        'patterns': [
+            r'(وش|ايش|شو) (رأيك|تنصح|تفضل)',
+            r'(ايهم|أيهم) (احسن|أحسن|افضل|أفضل)',
+        ],
+        'priority': 9,
+        'state': 'chat',
+    },
+    IntentType.COMPLAINT: {
+        'keywords': [
+            'شكوى', 'مشكلة', 'سيء', 'زفت', 'ما نفع', 'خربان',
+            'ما عجبني', 'سيئ', 'ما ينفع', 'خرب', 'ما زبط', 'بايخ',
+            'ما يشتغل', 'ردي', 'ما يصلح', 'غلط', 'خطأ',
+        ],
+        'patterns': [r'(مشكلة|شكوى)', r'ما (نفع|زبط|يشتغل|عجبني)'],
+        'priority': 8,
+        'state': 'chat',
+    },
+    IntentType.HELP: {
+        'keywords': [
+            'مساعدة', 'ساعدني', 'كيف', 'شرح', 'وش تقدر تسوي',
+            'كيف استخدمك', 'وش الخدمات', 'دليل', 'تعليمات',
+        ],
+        'patterns': [r'كيف (استخدم|اسوي)', r'(ساعدني|مساعدة)'],
+        'priority': 9,
+        'state': 'chat',
     },
     
     # ═══════════════════════════════════════════════════════════════
@@ -78,7 +243,8 @@ INTENT_PATTERNS = {
             r'(ابي|ابغى|اريد).*(خطة|برنامج|جدول)',
             r'وش.*(اسوي|نسوي).*(اليوم|يوم|الويكند|نهاية الاسبوع)',
         ],
-        'priority': 12
+        'priority': 12,
+        'state': 'needs_clarification',
     },
     IntentType.ACTIVITY_SUGGESTION: {
         'keywords': [
@@ -96,7 +262,8 @@ INTENT_PATTERNS = {
             r'(وين|فين).*(اروح|نروح|اطلع|نطلع)',
             r'(عطني|عطنا).*(فكرة|افكار|اقتراح)',
         ],
-        'priority': 11
+        'priority': 11,
+        'state': 'needs_clarification',
     },
     IntentType.MOOD_BASED: {
         'keywords': [
@@ -112,7 +279,8 @@ INTENT_PATTERNS = {
             r'(ابي|ابغى).*(اتسلى|ترفيه|شي حلو|شي مختلف|راحة|استرخي)',
             r'(تغيير|كسر).*(جو|روتين|ملل)',
         ],
-        'priority': 11
+        'priority': 11,
+        'state': 'needs_clarification',
     },
     IntentType.EXPLORE: {
         'keywords': [
@@ -127,7 +295,8 @@ INTENT_PATTERNS = {
             r'(اماكن|مناطق).*(حلوة|سياحية|تراثية|قديمة)',
             r'(ابي|ابغى).*(استكشف|اكتشف|ازور|اتعرف)',
         ],
-        'priority': 11
+        'priority': 11,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_FOOD: {
         'keywords': [
@@ -142,7 +311,8 @@ INTENT_PATTERNS = {
             r'(طلعة|خروجة|سهرة).*(اكل|عشاء|غداء)',
             r'(مكان|محل).*(ناكل|اكل|حلو).*(فيه)?',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_WALK: {
         'keywords': [
@@ -155,7 +325,8 @@ INTENT_PATTERNS = {
             r'(ودي|ابي|ابغى|نبي).*(اتمشى|نتمشى|تمشية|مشوار)',
             r'(اماكن|مكان).*(تمشية|مشي|ممشى)',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_COFFEE: {
         'keywords': [
@@ -170,7 +341,8 @@ INTENT_PATTERNS = {
             r'(مكان|محل).*(قهوة|كوفي|نقعد|نجلس|رايق|هادي)',
             r'(جلسة|قعدة).*(حلوة|رايقة|هادية)?',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_FAMILY: {
         'keywords': [
@@ -184,7 +356,8 @@ INTENT_PATTERNS = {
             r'(ابي|ابغى|ودي).*(اطلع|اروح).*(مع|معي).*(اهل|عائل|حريم|زوجت)',
             r'(مكان|اماكن).*(عوائل|عائل)',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_FRIENDS: {
         'keywords': [
@@ -198,7 +371,8 @@ INTENT_PATTERNS = {
             r'(مع|معي).*(الربع|الشباب|اصحاب|اصدقاء)',
             r'(مكان|اماكن).*(شباب|ربع|تجمع|سوالف)',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_ROMANTIC: {
         'keywords': [
@@ -211,7 +385,8 @@ INTENT_PATTERNS = {
             r'(انا و|مع).*(زوجت|خطيبت|حبيبت)',
             r'(ذكرى|مناسبة).*(زواج|خطوبة)?',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.OUTING_KIDS: {
         'keywords': [
@@ -225,7 +400,8 @@ INTENT_PATTERNS = {
             r'(ابي|ابغى|ودي).*(اخذ|اودي).*(العيال|الاطفال|بنتي|ولدي)',
             r'(العيال|الاطفال).*(ملوا|ملل|يلعب)',
         ],
-        'priority': 10
+        'priority': 10,
+        'state': 'needs_clarification',
     },
     IntentType.WEEKEND_PLAN: {
         'keywords': [
@@ -237,7 +413,8 @@ INTENT_PATTERNS = {
             r'(خطة|برنامج).*(ويكند|عطلة|اجازة|نهاية الاسبوع)',
             r'(وش|ايش).*(اسوي|نسوي).*(الويكند|العطلة|الاجازة|الخميس|الجمعة)',
         ],
-        'priority': 11
+        'priority': 11,
+        'state': 'needs_clarification',
     },
     IntentType.EVENING_PLAN: {
         'keywords': [
@@ -250,7 +427,8 @@ INTENT_PATTERNS = {
             r'(خطة|طلعة|خروجة).*(مسائي|ليلي|الليل|المساء)',
             r'(سهرة|سهرتنا).*(الليل|اليوم)?',
         ],
-        'priority': 11
+        'priority': 11,
+        'state': 'needs_clarification',
     },
     IntentType.MORNING_PLAN: {
         'keywords': [
@@ -262,7 +440,8 @@ INTENT_PATTERNS = {
             r'(وش|ايش).*(اسوي|نسوي).*(الصبح|الصباح|بكرة|باكر)',
             r'(خطة|طلعة|خروجة).*(صباحي|الصبح|الصباح)',
         ],
-        'priority': 11
+        'priority': 11,
+        'state': 'needs_clarification',
     },
     IntentType.PREFERENCE_RESPONSE: {
         'keywords': [
@@ -275,61 +454,263 @@ INTENT_PATTERNS = {
             r'^(ودي|ابي|ابغى|احب|حاب)\s+(اتمشى|اكل|قهوة|اتسوق|العب)',
             r'^(تمشية|اكل|قهوة|تسوق|مغامرة|هدوء|طبيعة)',
         ],
-        'priority': 9
+        'priority': 9,
+        'state': 'ready_to_search',
     },
     
     # ═══════════════════════════════════════════════════════════════
-    # 🔍 نوايا البحث والخدمات الأصلية
+    # 🍽️ نوايا الطعام والشراب
     # ═══════════════════════════════════════════════════════════════
-    IntentType.HELP: {
-        'keywords': ['مساعدة', 'ساعدني', 'كيف', 'شرح'],
-        'patterns': [r'كيف (استخدم|اسوي)'],
-        'priority': 9
-    },
     IntentType.HUNGRY: {
-        'keywords': ['جوعان', 'جعان', 'جيعان', 'جعت', 'جوعت', 'ابي اكل', 'ابغى اكل'],
+        'keywords': [
+            'جوعان', 'جعان', 'جيعان', 'جعت', 'جوعت',
+            'ابي اكل', 'ابغى اكل', 'ابي آكل',
+            'ما اكلت', 'بطني', 'جايع',
+        ],
         'patterns': [r'^(انا\s+)?(جوعان|جعان|جيعان)$', r'^جعت$', r'^جوعت$'],
-        'priority': 9
+        'priority': 9,
+        'state': 'needs_clarification',
+    },
+    IntentType.THIRSTY: {
+        'keywords': [
+            'عطشان', 'عطش', 'ابي مشروب', 'ابي شرب', 'ابي عصير',
+            'ابي ماي', 'ابي مويه',
+        ],
+        'patterns': [r'^(انا\s+)?عطشان', r'(ابي|ابغى).*(مشروب|شرب|عصير)'],
+        'priority': 9,
+        'state': 'needs_clarification',
+    },
+    IntentType.CRAVING: {
+        'keywords': [
+            'اشتهي', 'اشتهيت', 'نفسي في', 'نفسي ب', 'ودي في',
+            'يا ليت', 'كان ودي', 'حاسس ابي',
+        ],
+        'patterns': [
+            r'(اشتهي|اشتهيت|نفسي).*(في|ب)',
+        ],
+        'priority': 9,
+        'state': 'needs_clarification',
+    },
+    IntentType.SEARCH_FOOD: {
+        'keywords': [
+            'مطعم', 'شاورما', 'برقر', 'بيتزا', 'كبسة', 'رز',
+            'غداء', 'عشاء', 'حلويات', 'عصير',
+            'بروستد', 'دجاج', 'لحم', 'سمك', 'مندي', 'مظبي', 'كباب',
+            'مشويات', 'فول', 'تميس', 'فلافل', 'سمبوسة', 'معجنات',
+            'بخاري', 'مضغوط', 'حنيذ', 'مطبق', 'مرقوق',
+        ],
+        'patterns': [r'(ابي|ابغى|وين).*(مطعم|شاورما|برقر|بيتزا|مندي)'],
+        'priority': 7,
+        'state': 'needs_clarification',
+    },
+    IntentType.SEARCH_CAFE: {
+        'keywords': [
+            'كافيه', 'كوفي', 'مقهى', 'قهوة', 'ستاربكس',
+            'قهوة مختصة', 'سبيشلتي', 'لاتيه', 'كابتشينو',
+            'اسبريسو', 'v60', 'كيمكس',
+        ],
+        'patterns': [r'(ابي|ابغى|وين).*(كافيه|كوفي|مقهى|قهوة)'],
+        'priority': 7,
+        'state': 'needs_clarification',
+    },
+    IntentType.SEARCH_DESSERT: {
+        'keywords': [
+            'حلويات', 'حلى', 'كيك', 'تشيز كيك', 'بسبوسة', 'كنافة',
+            'ايسكريم', 'ايس كريم', 'جيلاتو', 'باسكن روبنز',
+            'شوكولاته', 'دونات', 'بان كيك', 'وافل',
+        ],
+        'patterns': [r'(ابي|ابغى|وين).*(حلويات|حلى|كيك|ايسكريم)'],
+        'priority': 7,
+        'state': 'needs_clarification',
+    },
+    IntentType.FOOD_RECOMMENDATION: {
+        'keywords': [
+            'وش تنصحني اكل', 'وش افضل مطعم', 'وش احسن اكل',
+            'وش الزين', 'وش اللي يستاهل', 'وش المميز',
+        ],
+        'patterns': [
+            r'(وش|ايش).*(تنصح|افضل|احسن).*(اكل|مطعم|كافيه)',
+            r'(وش|ايش).*(الزين|المميز|يستاهل)',
+        ],
+        'priority': 8,
+        'state': 'needs_clarification',
+    },
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🔧 نوايا الخدمات
+    # ═══════════════════════════════════════════════════════════════
+    IntentType.SEARCH_SERVICE: {
+        'keywords': [
+            'كهربائي', 'سباك', 'نجار', 'حداد', 'دهان', 'بلاط', 'مكيفات',
+            'تصليح', 'صيانة', 'تركيب', 'فني', 'ورشة', 'ميكانيكي', 'كفرات',
+            'غسيل سيارات', 'حلاق', 'خياط',
+        ],
+        'patterns': [r'(ابي|ابغى|احتاج).*(كهربائي|سباك|نجار|فني)'],
+        'priority': 7,
+        'state': 'ready_to_search',
+    },
+    IntentType.EMERGENCY_SERVICE: {
+        'keywords': [
+            'الحين', 'ضروري', 'مستعجل', 'بسرعة', 'عاجل', 'طوارئ',
+            'فوري', 'الحينه', 'توه', 'على طول', 'حالاً',
+        ],
+        'patterns': [
+            r'(ابي|ابغى|احتاج).*(الحين|ضروري|مستعجل|بسرعة|عاجل)',
+            r'(طوارئ|اسعاف|حادث)',
+        ],
+        'priority': 15,
+        'state': 'ready_to_search',
+    },
+    IntentType.HOME_PROBLEM: {
+        'keywords': [
+            'تقطر', 'تسرب', 'مسدود', 'خربان', 'ما يشتغل', 'طافح',
+            'انكسر', 'مكسور', 'محروق', 'يفصل', 'مسدوده',
+            'الماصورة', 'المويه', 'الكهرباء', 'النور', 'المكيف',
+            'الباب', 'الدولاب', 'السيفون', 'الشطاف',
+        ],
+        'patterns': [
+            r'(المويه|الماء|الماصورة|الحنفية).*(تقطر|تسرب|طافح|مسدود)',
+            r'(الكهرباء|النور|اللمبة).*(خربان|ما يشتغل|يفصل|محروق)',
+            r'(المكيف|التكييف).*(ما يبرد|خربان|صوت|ريحة)',
+            r'(الباب|الدولاب|الخزانة).*(مكسور|ما يقفل|مخلوع)',
+        ],
+        'priority': 8,
+        'state': 'ready_to_search',
+    },
+    IntentType.CAR_PROBLEM: {
+        'keywords': [
+            'السيارة', 'سيارتي', 'الموتر', 'البنشر', 'الكفر',
+            'الماكينة', 'القير', 'الفرامل', 'البريك', 'البطارية',
+            'ما تشتغل', 'خربانة', 'تسحب', 'صوت غريب',
+        ],
+        'patterns': [
+            r'(السيارة|سيارتي|الموتر).*(خرب|ما تشتغل|صوت|تسحب)',
+            r'(بنشر|كفر|بطارية).*(خرب|فاضي|مخروم)',
+        ],
+        'priority': 8,
+        'state': 'ready_to_search',
+    },
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 🏥 نوايا الأماكن والمرافق
+    # ═══════════════════════════════════════════════════════════════
+    IntentType.SEARCH_PLACE: {
+        'keywords': [
+            'مول', 'محل', 'دكان', 'سوق',
+            'فندق', 'شقق مفروشة', 'استراحة',
+            'محطة بنزين', 'غاز',
+        ],
+        'patterns': [r'(وين|فين|اقرب).*(مول|محل|فندق|محطة)'],
+        'priority': 6,
+        'state': 'ready_to_search',
+    },
+    IntentType.SEARCH_HEALTH: {
+        'keywords': [
+            'صيدلية', 'مستشفى', 'مستوصف', 'عيادة', 'طبيب', 'دكتور',
+            'اسنان', 'عيون', 'مختبر', 'تحاليل', 'اشعة', 'طوارئ',
+            'دواء', 'ادوية', 'علاج', 'النهدي', 'الدواء',
+        ],
+        'patterns': [
+            r'(وين|فين|اقرب).*(صيدلية|مستشفى|عيادة|دكتور)',
+            r'(ابي|ابغى).*(صيدلية|مستشفى|دكتور|طبيب)',
+        ],
+        'priority': 8,
+        'state': 'ready_to_search',
+    },
+    IntentType.SEARCH_SHOPPING: {
+        'keywords': [
+            'بقالة', 'سوبرماركت', 'ماركت', 'تموينات', 'بندة', 'الدانوب',
+            'جوالات', 'موبايل', 'ملابس', 'احذية', 'عطور', 'ذهب',
+            'اثاث', 'ايكيا', 'جرير', 'ساكو',
+        ],
+        'patterns': [
+            r'(وين|فين|اقرب).*(بقالة|سوبرماركت|محل)',
+            r'(ابي|ابغى).*(اشتري|تسوق)',
+        ],
+        'priority': 6,
+        'state': 'needs_clarification',
+    },
+    IntentType.SEARCH_EDUCATION: {
+        'keywords': [
+            'مدرسة', 'مدارس', 'روضة', 'جامعة', 'كلية', 'معهد',
+            'دورات', 'تدريب', 'مدرس خصوصي', 'تحفيظ قرآن',
+        ],
+        'patterns': [r'(وين|فين|اقرب).*(مدرسة|جامعة|معهد)'],
+        'priority': 6,
+        'state': 'ready_to_search',
+    },
+    IntentType.SEARCH_RELIGIOUS: {
+        'keywords': ['مسجد', 'جامع', 'مصلى', 'صلاة'],
+        'patterns': [r'(وين|فين|اقرب).*(مسجد|جامع)'],
+        'priority': 6,
+        'state': 'ready_to_search',
+    },
+    IntentType.SEARCH_GOVERNMENT: {
+        'keywords': [
+            'بلدية', 'امارة', 'شرطة', 'مرور', 'جوازات', 'احوال',
+            'بريد', 'كهرباء', 'مياه', 'اتصالات',
+        ],
+        'patterns': [r'(وين|فين|اقرب).*(بلدية|امارة|شرطة|مرور)'],
+        'priority': 6,
+        'state': 'ready_to_search',
+    },
+    
+    # ═══════════════════════════════════════════════════════════════
+    # 📍 نوايا الموقع والتنقل
+    # ═══════════════════════════════════════════════════════════════
+    IntentType.GET_DIRECTIONS: {
+        'keywords': ['كيف اروح', 'الطريق', 'اتجاه', 'خريطة', 'موقع', 'عنوان'],
+        'patterns': [r'كيف (اروح|أروح|اوصل)', r'وين (موقع|مكان)'],
+        'priority': 6,
+        'state': 'ready_to_search',
+    },
+    IntentType.NEAREST: {
+        'keywords': ['اقرب', 'أقرب', 'قريب', 'قريب مني', 'جنبي', 'حولي'],
+        'patterns': [r'(اقرب|أقرب)\s+\w+', r'(قريب|جنبي|حولي)'],
+        'priority': 7,
+        'state': 'ready_to_search',
     },
     IntentType.GET_BEST: {
         'keywords': ['افضل', 'أفضل', 'احسن', 'أحسن', 'اجود', 'أجود', 'اعلى تقييم'],
         'patterns': [r'(افضل|أفضل|احسن|أحسن)', r'اعلى تقييم'],
-        'priority': 8
+        'priority': 8,
+        'state': 'ready_to_search',
     },
-    IntentType.SEARCH_FOOD: {
-        'keywords': ['مطعم', 'شاورما', 'برقر', 'بيتزا', 'كبسة', 'رز', 
-                     'فطور', 'غداء', 'عشاء', 'كافيه', 'قهوة', 'حلويات', 'عصير',
-                     'بروستد', 'دجاج', 'لحم', 'سمك', 'مندي', 'مظبي', 'كباب'],
-        'patterns': [r'(ابي|ابغى|وين).*(مطعم|شاورما|برقر|بيتزا)'],
-        'priority': 7
+    IntentType.COMPARE: {
+        'keywords': ['مقارنة', 'قارن', 'الفرق بين', 'ايهم', 'أيهم', 'ولا'],
+        'patterns': [r'(الفرق|قارن) بين', r'(ايهم|أيهم) (احسن|أحسن|افضل|أفضل)'],
+        'priority': 8,
+        'state': 'chat',
     },
-    IntentType.SEARCH_PLACE: {
-        'keywords': ['صيدلية', 'مستشفى', 'مستوصف', 'عيادة', 'بنك', 'صراف', 'جامع', 
-                     'مسجد', 'مدرسة', 'جامعة', 'سوق', 'مول', 'محل', 'دكان'],
-        'patterns': [r'(وين|فين|اقرب).*(صيدلية|مستشفى|بنك)', r'ابي (صيدلية|مستشفى)'],
-        'priority': 6
+    
+    # ═══════════════════════════════════════════════════════════════
+    # ❓ نوايا عامة
+    # ═══════════════════════════════════════════════════════════════
+    IntentType.INFO_REQUEST: {
+        'keywords': [
+            'معلومات عن', 'كم عدد', 'متى', 'تاريخ عنيزة', 'سكان عنيزة',
+        ],
+        'patterns': [r'(معلومات|اخبرني) عن', r'كم (عدد|سكان)'],
+        'priority': 5,
+        'state': 'chat',
     },
-    IntentType.SEARCH_SERVICE: {
-        'keywords': ['كهربائي', 'سباك', 'نجار', 'حداد', 'دهان', 'بلاط', 'مكيفات',
-                     'تصليح', 'صيانة', 'تركيب', 'فني', 'ورشة', 'ميكانيكي', 'كفرات',
-                     'غسيل سيارات', 'حلاق', 'خياط'],
-        'patterns': [r'(ابي|ابغى|احتاج).*(كهربائي|سباك|نجار|فني)'],
-        'priority': 5
+    IntentType.WEATHER: {
+        'keywords': ['طقس', 'حرارة', 'جو', 'برد', 'حر', 'مطر', 'درجة الحرارة'],
+        'patterns': [r'(وش|كيف|كم).*(الطقس|الجو|الحرارة|درجة)'],
+        'priority': 5,
+        'state': 'chat',
     },
-    IntentType.GET_DIRECTIONS: {
-        'keywords': ['كيف اروح', 'الطريق', 'اتجاه', 'خريطة', 'موقع', 'عنوان'],
-        'patterns': [r'كيف (اروح|أروح|اوصل)', r'وين (موقع|مكان)'],
-        'priority': 4
+    IntentType.TIME_QUERY: {
+        'keywords': ['الساعة كم', 'متى يفتح', 'متى يقفل', 'اوقات الدوام', 'مواعيد'],
+        'patterns': [r'متى (يفتح|يقفل|يسكر)', r'(اوقات|مواعيد)'],
+        'priority': 5,
+        'state': 'chat',
     },
-    IntentType.FEEDBACK: {
-        'keywords': ['شكرا', 'مشكور', 'يعطيك العافية', 'ممتاز', 'رائع', 'حلو', 'تمام'],
-        'patterns': [r'^شكرا?$', r'^مشكور', r'يعطيك العافية'],
-        'priority': 3
-    },
-    IntentType.COMPLAINT: {
-        'keywords': ['شكوى', 'مشكلة', 'سيء', 'زفت', 'ما نفع', 'خربان'],
-        'patterns': [r'(مشكلة|شكوى)', r'ما (نفع|زبط)'],
-        'priority': 2
+    IntentType.PRICE_QUERY: {
+        'keywords': ['كم سعر', 'بكم', 'اسعار', 'أسعار', 'تكلفة', 'رخيص', 'غالي'],
+        'patterns': [r'(كم|بكم) (سعر|السعر)', r'(اسعار|أسعار|تكلفة)'],
+        'priority': 5,
+        'state': 'chat',
     },
 }
 
@@ -346,7 +727,57 @@ TOURISM_INTENTS = [
 NEEDS_FOLLOWUP_INTENTS = [
     IntentType.ACTIVITY_SUGGESTION, IntentType.MOOD_BASED,
     IntentType.EXPLORE, IntentType.DAILY_PLAN,
+    IntentType.HUNGRY, IntentType.THIRSTY, IntentType.CRAVING,
+    IntentType.FOOD_RECOMMENDATION,
+    IntentType.OUTING_FOOD, IntentType.OUTING_WALK, IntentType.OUTING_COFFEE,
+    IntentType.OUTING_FAMILY, IntentType.OUTING_FRIENDS, IntentType.OUTING_ROMANTIC,
+    IntentType.OUTING_KIDS, IntentType.WEEKEND_PLAN, IntentType.EVENING_PLAN,
+    IntentType.MORNING_PLAN,
+    IntentType.SEARCH_FOOD, IntentType.SEARCH_CAFE, IntentType.SEARCH_DESSERT,
+    IntentType.SEARCH_SHOPPING,
 ]
+
+# نوايا المحادثة البحتة — لا تحتاج بحث أبداً
+CHAT_ONLY_INTENTS = [
+    IntentType.GREETING, IntentType.FAREWELL, IntentType.GRATITUDE,
+    IntentType.SMALL_TALK, IntentType.IDENTITY, IntentType.JOKE,
+    IntentType.OPINION, IntentType.COMPLAINT, IntentType.HELP,
+    IntentType.INFO_REQUEST, IntentType.WEATHER, IntentType.TIME_QUERY,
+    IntentType.PRICE_QUERY, IntentType.COMPARE,
+]
+
+# نوايا تحتاج بحث فوري — الطلب واضح ومحدد
+IMMEDIATE_SEARCH_INTENTS = [
+    IntentType.SEARCH_SERVICE, IntentType.EMERGENCY_SERVICE,
+    IntentType.HOME_PROBLEM, IntentType.CAR_PROBLEM,
+    IntentType.SEARCH_PLACE, IntentType.SEARCH_HEALTH,
+    IntentType.SEARCH_EDUCATION, IntentType.SEARCH_RELIGIOUS,
+    IntentType.SEARCH_GOVERNMENT,
+    IntentType.GET_DIRECTIONS, IntentType.NEAREST,
+]
+
+# كلمات تدل على الاستعجال
+URGENCY_KEYWORDS = [
+    'الحين', 'الحينه', 'ضروري', 'مستعجل', 'بسرعة', 'عاجل',
+    'فوري', 'توه', 'على طول', 'حالاً', 'طوارئ', 'اسعاف',
+]
+
+# كلمات تدل على الرفقة
+COMPANION_KEYWORDS = {
+    'family': ['عائلة', 'عائلي', 'عوائل', 'اهل', 'اهلي', 'حريم', 'زوجتي', 'زوجة', 'امي', 'عيال', 'العيال'],
+    'friends': ['ربع', 'الربع', 'شباب', 'الشباب', 'اصحاب', 'اصدقاء', 'شلة'],
+    'romantic': ['رومانسي', 'حبيبتي', 'حبيبي', 'زوجتي', 'خطيبتي', 'لحالنا'],
+    'kids': ['اطفال', 'عيال', 'صغار', 'بنتي', 'ولدي', 'العيال'],
+    'alone': ['لحالي', 'لوحدي', 'بروحي', 'وحدي'],
+}
+
+# كلمات تدل على الوقت
+TIME_KEYWORDS = {
+    'morning': ['الصباح', 'الصبح', 'صباح', 'بكرة', 'باكر', 'فطور', 'الضحى'],
+    'evening': ['الليلة', 'الليل', 'مساء', 'المساء', 'العصر', 'المغرب', 'بالليل', 'سهرة'],
+    'now': ['الحين', 'الحينه', 'توه', 'دحين', 'هسه'],
+    'weekend': ['ويكند', 'نهاية الاسبوع', 'عطلة', 'اجازة', 'الخميس', 'الجمعة'],
+}
 
 # تصنيف الأنشطة حسب نوع الخروجة - يستخدم لبناء الخطة اليومية
 ACTIVITY_CATEGORIES = {
@@ -607,6 +1038,35 @@ DATABASE_CATEGORIES = [
 ]
 
 
+def _detect_urgency(text: str) -> str:
+    """كشف مستوى الاستعجال في النص"""
+    text_lower = text.strip()
+    for keyword in URGENCY_KEYWORDS:
+        if keyword in text_lower:
+            return 'urgent'
+    return 'normal'
+
+
+def _detect_companion(text: str) -> str:
+    """كشف الرفقة من النص"""
+    text_lower = text.strip()
+    for companion_type, keywords in COMPANION_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                return companion_type
+    return ''
+
+
+def _detect_time_preference(text: str) -> str:
+    """كشف تفضيل الوقت من النص"""
+    text_lower = text.strip()
+    for time_type, keywords in TIME_KEYWORDS.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                return time_type
+    return ''
+
+
 def extract_entities(text: str) -> Dict:
     """استخراج الكيانات من النص بشكل ذكي - يفهم المشاكل الوصفية"""
     entities = {
@@ -666,14 +1126,24 @@ def extract_entities(text: str) -> Dict:
 
 def detect_intent(text: str) -> Intent:
     """
-    اكتشاف نية المستخدم من النص - يفهم المشاكل الوصفية
-    مثال: "ماصورة المويه تقطر" -> يفهم أنه يحتاج سباك
+    اكتشاف نية المستخدم من النص — نظام ذكي يفهم:
+    - اللهجة القصيمية والعامية والعربية
+    - المشاكل الوصفية ("ماصورة المويه تقطر" → سباك)
+    - مستوى الاستعجال
+    - الرفقة (عائلة/أصحاب/لحالي)
+    - تفضيل الوقت (صباح/مساء/الحين)
+    - حالة المحادثة (سولفة/توضيح/بحث)
     """
     text_clean = text.strip()
     text_lower = text_clean.lower()
     
     # استخراج الكيانات أولاً (مهم لفهم المشاكل)
     entities = extract_entities(text_clean)
+    
+    # استخراج السياق الإضافي
+    urgency = _detect_urgency(text_clean)
+    companion = _detect_companion(text_clean)
+    time_pref = _detect_time_preference(text_clean)
     
     best_intent = IntentType.UNKNOWN
     best_score = 0
@@ -685,9 +1155,11 @@ def detect_intent(text: str) -> Intent:
         if entities['use_google']:
             best_intent = IntentType.SEARCH_PLACE
         else:
-            best_intent = IntentType.SEARCH_SERVICE
+            best_intent = IntentType.HOME_PROBLEM if any(
+                kw in text_lower for kw in ['المويه', 'الكهرباء', 'المكيف', 'الباب', 'الماصورة', 'النور']
+            ) else IntentType.SEARCH_SERVICE
         best_score = len(entities['keywords'])
-        confidence = 0.9  # ثقة عالية لأننا فهمنا المشكلة
+        confidence = 0.9
     else:
         # فحص كل نوع نية
         for intent_type, config in INTENT_PATTERNS.items():
@@ -709,9 +1181,12 @@ def detect_intent(text: str) -> Intent:
                 best_intent = intent_type
                 best_priority = config['priority']
         
+        # إذا فيه استعجال + نية بحث → ترقية لـ EMERGENCY_SERVICE
+        if urgency == 'urgent' and best_intent in [IntentType.SEARCH_SERVICE, IntentType.HOME_PROBLEM, IntentType.CAR_PROBLEM]:
+            best_intent = IntentType.EMERGENCY_SERVICE
+        
         # تحديد الثقة
         if best_score == 0:
-            # إذا لم نجد شيء، نفترض بحث عام
             if entities['category']:
                 best_intent = IntentType.SEARCH_FOOD if entities['use_google'] else IntentType.SEARCH_SERVICE
                 confidence = 0.7
@@ -726,17 +1201,31 @@ def detect_intent(text: str) -> Intent:
     
     # تحديد استخدام Google
     use_google = entities.get('use_google', False) or best_intent in [
-        IntentType.SEARCH_FOOD, 
-        IntentType.SEARCH_PLACE,
-        IntentType.GET_DIRECTIONS
+        IntentType.SEARCH_FOOD, IntentType.SEARCH_CAFE, IntentType.SEARCH_DESSERT,
+        IntentType.SEARCH_PLACE, IntentType.SEARCH_HEALTH, IntentType.SEARCH_SHOPPING,
+        IntentType.SEARCH_EDUCATION, IntentType.SEARCH_RELIGIOUS, IntentType.SEARCH_GOVERNMENT,
+        IntentType.GET_DIRECTIONS, IntentType.NEAREST, IntentType.GET_BEST,
     ]
     
     # النوايا السياحية تستخدم Google Maps دائماً
     if best_intent in TOURISM_INTENTS:
         use_google = True
     
-    # تحديد إذا تحتاج سؤال متابعة
-    follow_up = best_intent in NEEDS_FOLLOWUP_INTENTS
+    # تحديد حالة المحادثة
+    if best_intent in CHAT_ONLY_INTENTS:
+        conv_state = ConversationState.CHAT
+    elif best_intent in IMMEDIATE_SEARCH_INTENTS or urgency == 'urgent':
+        conv_state = ConversationState.READY_TO_SEARCH
+    elif best_intent in NEEDS_FOLLOWUP_INTENTS:
+        conv_state = ConversationState.NEEDS_CLARIFICATION
+    else:
+        conv_state = ConversationState.NEEDS_CLARIFICATION
+    
+    # إذا تحتاج سؤال متابعة
+    follow_up = conv_state == ConversationState.NEEDS_CLARIFICATION
+    
+    # بناء أسئلة التوضيح الذكية
+    clarification_qs = _build_clarification_questions(best_intent, companion, time_pref, entities)
     
     # تحديد نوع الخطة
     plan_type_map = {
@@ -764,24 +1253,91 @@ def detect_intent(text: str) -> Intent:
         original_text=text_clean,
         use_google=use_google,
         needs_followup=follow_up,
-        plan_type=p_type
+        plan_type=p_type,
+        conversation_state=conv_state,
+        clarification_questions=clarification_qs,
+        urgency=urgency,
+        companion=companion,
+        time_preference=time_pref,
     )
 
 
+def _build_clarification_questions(
+    intent_type: IntentType,
+    companion: str,
+    time_pref: str,
+    entities: Dict
+) -> List[str]:
+    """بناء أسئلة توضيحية ذكية — يسأل بس عن اللي ما يعرفه"""
+    questions = []
+    
+    # ═══ نوايا الطعام ═══
+    if intent_type in [IntentType.HUNGRY, IntentType.CRAVING, IntentType.FOOD_RECOMMENDATION, IntentType.SEARCH_FOOD]:
+        if not entities.get('category') or entities['category'] == 'مطعم':
+            questions.append("وش تشتهي؟ مندي، شاورما، برقر، ولا شي ثاني؟")
+        if not companion:
+            questions.append("ومع مين إذا ما عليك أمر؟")
+    
+    # ═══ نوايا القهوة ═══
+    elif intent_type in [IntentType.OUTING_COFFEE, IntentType.SEARCH_CAFE, IntentType.THIRSTY]:
+        questions.append("تبي مكان هادي ولا فيه حركة وناس؟")
+        if not companion:
+            questions.append("لحالك ولا معك أحد؟")
+    
+    # ═══ نوايا الخروجة العامة ═══
+    elif intent_type in [IntentType.ACTIVITY_SUGGESTION, IntentType.MOOD_BASED, IntentType.EXPLORE]:
+        if not companion:
+            questions.append("لحالك ولا معك أحد؟")
+        questions.append("وش جوك اليوم؟ أكل، تمشية، قهوة، تسوق؟")
+    
+    # ═══ خطة يومية ═══
+    elif intent_type == IntentType.DAILY_PLAN:
+        questions.append("وش تحب تسوي؟ أكل، تمشية، قهوة، تسوق؟")
+        if not companion:
+            questions.append("مع مين؟ لحالك، عائلة، أصحاب؟")
+        if not time_pref:
+            questions.append("صباح ولا مساء؟")
+    
+    # ═══ خروجة أكل ═══
+    elif intent_type == IntentType.OUTING_FOOD:
+        if not entities.get('category') or entities['category'] == 'مطعم':
+            questions.append("وش نوع الأكل اللي تبيه؟")
+        if not companion:
+            questions.append("مع مين؟")
+    
+    # ═══ خروجة تمشية ═══
+    elif intent_type == IntentType.OUTING_WALK:
+        if not companion:
+            questions.append("لحالك ولا معك أحد؟")
+        questions.append("تبي هدوء ولا تحب فيها حركة؟")
+    
+    # ═══ تسوق ═══
+    elif intent_type in [IntentType.SEARCH_SHOPPING, IntentType.SEARCH_DESSERT]:
+        questions.append("وش بالضبط تبي تشتري؟")
+    
+    return questions[:2]  # سؤالين كافي — لا نكثر
+
+
 def get_intent_response_template(intent: Intent) -> str:
-    """الحصول على قالب الرد باللهجة القصيمية"""
+    """الحصول على قالب الرد باللهجة القصيمية الأصيلة — كل رد مختلف"""
     templates = {
-        IntentType.GREETING: "هلا والله! 🐺\nأنا ذيبان، دليلك في عنيزة.\nوش تبي؟",
-        IntentType.HELP: "ابشر! أقدر أساعدك في:\n🔧 خدمات (كهربائي، سباك، نجار)\n🍽️ مطاعم وكافيهات\n🏥 صيدليات ومستشفيات\n🗺️ خطط يومية وسياحية\n\nقل لي وش تحتاج!",
-        IntentType.HUNGRY: "جوعان؟ 🍽️\nوش تحب تاكل؟\n\n🌯 شاورما\n🍔 برقر\n🍕 بيتزا\n🍗 بروستد\n🍚 كبسة/مندي\n☕ كافيه\n\nقل لي وابشر!",
-        IntentType.FEEDBACK: "الله يعطيك العافية! 🐺\nتبي شي ثاني؟",
-        IntentType.COMPLAINT: "لا والله؟ 😕\nقل لي وش المشكلة وابشر بالحل.",
-        IntentType.UNKNOWN: "ما فهمت عليك 🤔\nقل لي بالضبط وش تبي؟",
-        # قوالب سياحية
-        IntentType.ACTIVITY_SUGGESTION: "حياك! 🐺 عندي اقتراحات كثير...\nبس قل لي:\n- وش جوّك اليوم؟ 🤔\n- تحب تمشية، أكل، قهوة، تسوق؟\n- لحالك ولا مع أحد؟",
-        IntentType.MOOD_BASED: "فهمت عليك! 😄\nقل لي وش تحب أكثر:\n🚶 تمشية ومناظر\n☕ قهوة ومكان رايق\n🍽️ أكل وتجربة مطاعم\n🛍️ تسوق\n🎮 ترفيه والعاب",
-        IntentType.EXPLORE: "عنيزة فيها أماكن حلوة! 🏛️\nوش يهمك أكثر:\n🕌 تراث وتاريخ\n🌿 طبيعة وحدائق\n🍽️ مطاعم وكافيهات\n🛍️ تسوق ومولات",
-        IntentType.DAILY_PLAN: "ابشر! أسوي لك خطة يومية 📋\nبس قل لي:\n- وش تحب؟ (أكل، تمشية، قهوة، تسوق)\n- مع مين؟ (لحالك، عائلة، أصحاب)\n- صباح ولا مساء؟",
+        IntentType.GREETING: "هلا يالغالي! وش لونك؟ 🐺\nأنا ذيبان، حياك الله.\nها خبرني وش تبي وابشر!",
+        IntentType.FAREWELL: "الله معك يا بعد حيي! تأمر على شي ثاني ترا أنا هنا 🐺",
+        IntentType.GRATITUDE: "العفو يالغالي! ما سوينا شي 😊 تبي شي ثاني؟ أنا حاضر",
+        IntentType.SMALL_TALK: "الحمد لله تمام يا بعد حيي! وانت عساك بخير 😊\nها وش أقدر أسوي لك اليوم؟",
+        IntentType.IDENTITY: "أنا ذيبان 🐺 قصيمي أصيل من عنيزة!\nأعرف كل زاوية في المدينة وأقدر أساعدك في:\n🔧 خدمات\n🍽️ مطاعم وكافيهات\n🗺️ خطط وخروجات\nقل لي وش تبي!",
+        IntentType.JOKE: "هههه حبيبي! 😄\nتراني ما أقدر أقول نكت بس أقدر أوريك أماكن تنبسط فيها!\nوش جوك؟",
+        IntentType.HELP: "ابشر يالغالي! أقدر أساعدك في:\n🔧 خدمات منزلية (كهربائي، سباك، نجار)\n🍽️ مطاعم وكافيهات\n🏥 صيدليات ومستشفيات\n🗺️ خطط يومية وخروجات\nقل لي وش تحتاج بالضبط!",
+        IntentType.COMPLAINT: "لا والله؟ 😕 ذا شي ما يرضينا\nخبرني وش صار وابشر بالحل يالغالي",
+        IntentType.HUNGRY: "جعان يالحبيب؟ 😄\nقل لي بس وش جوك اليوم؟ مندي، شاورما، برقر، ولا شي ثاني؟\nومع مين إذا ما عليك أمر؟",
+        IntentType.THIRSTY: "عطشان؟ لا يهمك �\nتبي عصير طبيعي، قهوة، ولا مشروب بارد؟",
+        IntentType.CRAVING: "ايه والله! الاشتهاء ذا ما يقاوم 😄\nقل لي وش بالضبط وابشر ألقيه لك!",
+        IntentType.ACTIVITY_SUGGESTION: "حياك يالغالي! عندي أفكار كثير 😊\nبس خبرني: لحالك ولا معك أحد؟ ووش جوك اليوم؟",
+        IntentType.MOOD_BASED: "فهمت عليك يالغالي! 😄\nقل لي بس: تحب تطلع ولا تبي شي هادي؟ ومع مين؟",
+        IntentType.EXPLORE: "عنيزة فيها أماكن حلوة يالغالي! 🏛️\nوش يهمك أكثر؟ تراث، طبيعة، مطاعم، ولا تسوق؟",
+        IntentType.DAILY_PLAN: "ابشر أسوي لك خطة 📋\nبس خبرني: وش تحب تسوي؟ ومع مين؟ وصباح ولا مساء؟",
+        IntentType.OPINION: "والله أعطيك رأيي بكل صراحة 😊\nقل لي وش تبي أقارن لك؟",
+        IntentType.UNKNOWN: "ها يالغالي؟ وضح لي شوي وش تبي بالضبط 🤔",
     }
     
     return templates.get(intent.type, "")
@@ -792,9 +1348,19 @@ def is_tourism_intent(intent: Intent) -> bool:
     return intent.type in TOURISM_INTENTS
 
 
+def is_chat_only(intent: Intent) -> bool:
+    """هل النية محادثة بحتة — لا تحتاج بحث"""
+    return intent.type in CHAT_ONLY_INTENTS
+
+
+def is_immediate_search(intent: Intent) -> bool:
+    """هل النية تحتاج بحث فوري بدون أسئلة"""
+    return intent.type in IMMEDIATE_SEARCH_INTENTS or intent.urgency == 'urgent'
+
+
 def needs_followup(intent: Intent) -> bool:
     """هل النية تحتاج سؤال متابعة لمعرفة تفضيلات المستخدم"""
-    return intent.type in NEEDS_FOLLOWUP_INTENTS
+    return intent.conversation_state == ConversationState.NEEDS_CLARIFICATION
 
 
 def get_plan_activities(intent: Intent) -> List[str]:
@@ -804,16 +1370,20 @@ def get_plan_activities(intent: Intent) -> List[str]:
 
 def should_search_database(intent: Intent) -> bool:
     """هل يجب البحث في قاعدة البيانات"""
-    return intent.type == IntentType.SEARCH_SERVICE or not intent.use_google
+    return intent.type in [
+        IntentType.SEARCH_SERVICE, IntentType.EMERGENCY_SERVICE,
+        IntentType.HOME_PROBLEM, IntentType.CAR_PROBLEM,
+    ] or not intent.use_google
 
 
 def should_search_google(intent: Intent) -> bool:
     """هل يجب البحث في Google Maps"""
     return intent.use_google or intent.type in [
-        IntentType.SEARCH_FOOD,
-        IntentType.SEARCH_PLACE,
-        IntentType.GET_DIRECTIONS,
-        IntentType.GET_BEST
+        IntentType.SEARCH_FOOD, IntentType.SEARCH_CAFE, IntentType.SEARCH_DESSERT,
+        IntentType.SEARCH_PLACE, IntentType.SEARCH_HEALTH, IntentType.SEARCH_SHOPPING,
+        IntentType.SEARCH_EDUCATION, IntentType.SEARCH_RELIGIOUS, IntentType.SEARCH_GOVERNMENT,
+        IntentType.GET_DIRECTIONS, IntentType.NEAREST, IntentType.GET_BEST,
+        IntentType.FOOD_RECOMMENDATION,
     ]
 
 

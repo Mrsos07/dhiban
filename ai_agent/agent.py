@@ -205,7 +205,7 @@ class DhibanAgent:
             system_prompt = db_settings.system_prompt if db_settings else DEFAULT_SYSTEM_PROMPT
             model = db_settings.model_name if db_settings else self.model
             temperature = db_settings.temperature if db_settings else 0.9
-            max_tokens = db_settings.max_tokens if db_settings else 600
+            max_tokens = db_settings.max_tokens if db_settings else 800
             
             # جلب تاريخ المحادثة قبل حفظ الرسالة الحالية لتجنب التكرار
             conversation_history = self._get_conversation_history(user_id)
@@ -294,14 +294,14 @@ class DhibanAgent:
             bot_response = assistant_message.content
             logger.info(f"[AGENT] Direct OpenAI response (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
-                bot_response = "وش تبي بالضبط؟ وضح أكثر 🐺"
+                bot_response = "ها يالغالي؟ وضح لي شوي وش تبي بالضبط 🐺"
             
             self._save_message(user_id, 'bot', bot_response)
             return bot_response
         
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
-            error_response = "صار خطأ، جرب مرة ثانية 🐺"
+            error_response = "يالغالي صار خطأ بسيط، جرب مرة ثانية وابشر 🐺"
             self._save_message(user_id, 'bot', error_response)
             return error_response
     
@@ -321,7 +321,7 @@ class DhibanAgent:
             system_prompt = db_settings.system_prompt if db_settings else DEFAULT_SYSTEM_PROMPT
             model = db_settings.model_name if db_settings else self.model
             temperature = float(db_settings.temperature) if db_settings else 0.9
-            max_tokens = int(db_settings.max_tokens) if db_settings else 600
+            max_tokens = int(db_settings.max_tokens) if db_settings else 800
             
             messages = [{"role": "system", "content": system_prompt}]
             
@@ -395,12 +395,12 @@ class DhibanAgent:
             bot_response = assistant_message.content
             logger.info(f"[AGENT-WA] Direct OpenAI (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
-                bot_response = "وش تبي بالضبط؟ وضح أكثر"
+                bot_response = "ها يالغالي؟ خبرني وش تبي بالضبط"
             return bot_response
         
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
-            return "صار خطأ، جرب مرة ثانية"
+            return "يالغالي صار خطأ بسيط، جرب مرة ثانية وابشر"
 
     def process_image_message(
         self,
@@ -557,16 +557,16 @@ class DhibanAgent:
         if db_settings and db_settings.welcome_message:
             return db_settings.welcome_message
         
-        return """هلا والله! 🐺
-أنا ذيبان، دليلك الشخصي في عنيزة.
+        return """هلا يالغالي! 🐺
+أنا ذيبان، قصيمي أصيل وأعرف كل زاوية في عنيزة.
 
-وش تبي؟
-�️ خطط يومية واقتراحات طلعات
-🍽️ مطاعم، كافيهات، حلويات
+قل لي وش تبي وابشر:
+🗺️ خطط وخروجات
+🍽️ مطاعم وكافيهات
 🔧 كهربائي، سباك، نجار
-🏥 صيدليات، مستشفيات
+🏥 صيدليات ومستشفيات
 
-قل "وش اسوي اليوم" وابشر بخطة كاملة! 📋"""
+سولفني وش جوك اليوم! 😊"""
 
 
 # إنشاء instance واحد للوكيل
