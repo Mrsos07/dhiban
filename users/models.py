@@ -7,6 +7,15 @@ from django.utils.translation import gettext_lazy as _
 class WhatsAppUser(models.Model):
     """نموذج مستخدمي واتساب"""
     
+    CUSTOMER_CATEGORY_CHOICES = [
+        ('individual', 'فرد'),
+        ('merchant', 'تاجر / صاحب محل'),
+        ('restaurant', 'مطعم / كافيه'),
+        ('company', 'شركة / مؤسسة'),
+        ('contractor', 'مقاول / فني'),
+        ('other', 'أخرى'),
+    ]
+    
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -63,6 +72,22 @@ class WhatsAppUser(models.Model):
         _('نشط'),
         default=True,
         db_index=True
+    )
+    
+    customer_category = models.CharField(
+        _('تصنيف العميل'),
+        max_length=20,
+        choices=CUSTOMER_CATEGORY_CHOICES,
+        default='individual',
+        db_index=True,
+        help_text=_('تصنيف العميل لاستهداف الرسائل الدعائية')
+    )
+    
+    tags = models.JSONField(
+        _('العلامات'),
+        default=list,
+        blank=True,
+        help_text=_('علامات مخصصة مثل: ["نشط", "قهوة", "مطعم"]')
     )
     
     preferences = models.JSONField(

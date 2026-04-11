@@ -10,8 +10,9 @@ class AgentSettings(models.Model):
     """إعدادات وكيل الذكاء الاصطناعي"""
     
     MODEL_CHOICES = [
+        ('gpt-4.1', 'GPT-4.1 (الأحدث والأقوى)'),
+        ('gpt-4o', 'GPT-4o (موصى به)'),
         ('gpt-4o-mini', 'GPT-4o Mini (سريع وموفر)'),
-        ('gpt-4o', 'GPT-4o (أقوى)'),
         ('gpt-4-turbo', 'GPT-4 Turbo'),
         ('gpt-3.5-turbo', 'GPT-3.5 Turbo (أرخص)'),
     ]
@@ -38,7 +39,7 @@ class AgentSettings(models.Model):
         _('نموذج الذكاء الاصطناعي'),
         max_length=50,
         choices=MODEL_CHOICES,
-        default='gpt-4o-mini'
+        default='gpt-4o'
     )
     
     system_prompt = models.TextField(
@@ -64,7 +65,7 @@ class AgentSettings(models.Model):
     
     temperature = models.FloatField(
         _('Temperature'),
-        default=0.7,
+        default=0.9,
         help_text=_('0 = دقيق جدا 1 = إبداعي أكثر')
     )
     

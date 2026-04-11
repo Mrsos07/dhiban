@@ -1,0 +1,251 @@
+{% extends 'dashboard/base.html' %}
+
+{% block page_title %}{% if partner %}تعديل شريك{% else %}إضافة شريك معتمد{% endif %}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1">
+            <i class="bi bi-patch-check-fill text-warning me-2"></i>
+            {% if partner %}تعديل: {{ partner.name_ar }}{% else %}إضافة شريك معتمد جديد{% endif %}
+        </h4>
+        <small class="text-muted">الشركاء يُقترحون أولاً من قبل الوكيل قبل الموردين وقوقل ماب</small>
+    </div>
+    <a href="{% url 'dashboard:partners_list' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-right me-1"></i>رجوع
+    </a>
+</div>
+
+<form method="post" id="partnerForm">
+    {% csrf_token %}
+    <div class="row g-4">
+
+        <!-- العمود الرئيسي -->
+        <div class="col-lg-8">
+
+            <!-- المعلومات الأساسية -->
+            <div class="card mb-4">
+                <div class="card-header"><i class="bi bi-info-circle me-2"></i>المعلومات الأساسية</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">الاسم بالعربية <span class="text-danger">*</span></label>
+                            <input type="text" name="name_ar" class="form-control" value="{{ partner.name_ar|default:'' }}" required placeholder="مثال: مطعم الأصيل">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">الاسم بالإنجليزية</label>
+                            <input type="text" name="name_en" class="form-control" dir="ltr" value="{{ partner.name_en|default:'' }}" placeholder="Al Aseel Restaurant">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-bold">الوصف</label>
+                            <textarea name="description" class="form-control" rows="3" placeholder="وصف مختصر للمكان أو الخدمة...">{{ partner.description|default:'' }}</textarea>
+                            <div class="form-text">يستخدمه الوكيل لفهم طبيعة الخدمة عند البحث</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- التصنيف -->
+            <div class="card mb-4">
+                <div class="card-header"><i class="bi bi-folder me-2"></i>التصنيف — مهم للوكيل</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">التصنيف الرئيسي <span class="text-danger">*</span></label>
+                            <select name="category" id="categorySelect" class="form-select" required>
+                                <option value="">اختر التصنيف</option>
+                                {% for cat in categories %}
+                                <option value="{{ cat.id }}"
+                                    {% if partner.category_id == cat.id %}selected{% endif %}>
+                                    {{ cat.name_ar }}{% if cat.name_en %} ({{ cat.name_en }}){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">يحدد في أي قسم يبحث الوكيل عن هذا الشريك</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">التصنيف الفرعي</label>
+                            <select name="subcategory" id="subcategorySelect" class="form-select">
+                                <option value="">اختر التصنيف الفرعي</option>
+                                {% for sub in subcategories %}
+                                <option value="{{ sub.id }}"
+                                    data-category="{{ sub.category_id }}"
+                                    {% if partner.subcategory_id == sub.id %}selected{% endif %}>
+                                    {{ sub.name_ar }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- التواصل والموقع -->
+            <div class="card mb-4">
+                <div class="card-header"><i class="bi bi-telephone me-2"></i>التواصل والموقع</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رقم الهاتف</label>
+                            <input type="text" name="phone" class="form-control" dir="ltr"
+                                value="{{ partner.get_primary_phone|default:'' }}" placeholder="05XXXXXXXX">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">البريد الإلكتروني</label>
+                            <input type="email" name="email" class="form-control" dir="ltr"
+                                value="{{ partner.email|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">الموقع الإلكتروني</label>
+                            <input type="url" name="website" class="form-control" dir="ltr"
+                                value="{{ partner.website|default:'' }}" placeholder="https://...">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold">رابط Google Maps <i class="bi bi-geo-alt text-danger"></i></label>
+                            <input type="url" name="google_maps_url" class="form-control" dir="ltr"
+                                value="{{ partner.google_maps_url|default:'' }}"
+                                placeholder="https://maps.google.com/?q=...">
+                            <div class="form-text">الرابط الذي يظهر للمستخدم في واتساب عند الاقتراح</div>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">خط العرض (Latitude)</label>
+                            <input type="number" step="any" name="lat" class="form-control" dir="ltr"
+                                value="{{ partner.location.lat|default:'' }}" placeholder="26.08">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">خط الطول (Longitude)</label>
+                            <input type="number" step="any" name="lng" class="form-control" dir="ltr"
+                                value="{{ partner.location.lng|default:'' }}" placeholder="43.99">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">العنوان</label>
+                            <input type="text" name="address" class="form-control"
+                                value="{{ partner.location.address|default:'' }}" placeholder="حي النخيل، عنيزة">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- العمود الجانبي -->
+        <div class="col-lg-4">
+
+            <!-- ملاحظات الوكيل -->
+            <div class="card mb-4 border-warning">
+                <div class="card-header bg-warning bg-opacity-10">
+                    <i class="bi bi-robot me-2 text-warning"></i>
+                    <strong>ملاحظات الوكيل</strong>
+                </div>
+                <div class="card-body">
+                    <textarea name="agent_notes" class="form-control" rows="5"
+                        placeholder="مثال: متخصص في وجبات عائلية، يوفر توصيل، الأسعار مناسبة، أفضل وقت الزيارة المساء...">{{ partner.agent_notes|default:'' }}</textarea>
+                    <div class="form-text mt-2">
+                        <i class="bi bi-info-circle text-warning me-1"></i>
+                        الوكيل يقرأ هذا النص ويذكره للمستخدم عند الاقتراح
+                    </div>
+                </div>
+            </div>
+
+            <!-- التقييم -->
+            <div class="card mb-4">
+                <div class="card-header"><i class="bi bi-star me-2"></i>التقييم</div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label">التقييم (0 - 5)</label>
+                        <input type="number" name="rating" class="form-control" dir="ltr"
+                            min="0" max="5" step="0.1"
+                            value="{{ partner.rating|default:'0' }}">
+                    </div>
+                    <div>
+                        <label class="form-label">عدد التقييمات</label>
+                        <input type="number" name="reviews_count" class="form-control" dir="ltr"
+                            min="0"
+                            value="{{ partner.reviews_count|default:'0' }}">
+                    </div>
+                </div>
+            </div>
+
+            <!-- الحالة -->
+            <div class="card mb-4">
+                <div class="card-header"><i class="bi bi-toggles me-2"></i>الحالة</div>
+                <div class="card-body">
+                    <div class="d-flex flex-column gap-3">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_active" id="is_active"
+                                {% if partner.is_active or not partner %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="is_active">
+                                <i class="bi bi-power me-1 text-success"></i>نشط
+                            </label>
+                            <div class="form-text">الشريك غير النشط لن يُقترح</div>
+                        </div>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="is_verified" id="is_verified"
+                                {% if partner.is_verified %}checked{% endif %}>
+                            <label class="form-check-label" for="is_verified">
+                                <i class="bi bi-shield-check me-1 text-info"></i>موثق
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- معرف Google Maps -->
+            <div class="card mb-4">
+                <div class="card-header"><i class="bi bi-map me-2"></i>معرف Google Maps</div>
+                <div class="card-body">
+                    <input type="text" name="google_maps_place_id" class="form-control" dir="ltr"
+                        value="{{ partner.google_maps_place_id|default:'' }}"
+                        placeholder="ChIJ...">
+                    <div class="form-text">اختياري — للتكامل مع Google Places API</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- أزرار الحفظ -->
+    <div class="card">
+        <div class="card-body d-flex gap-2 justify-content-end">
+            <a href="{% url 'dashboard:partners_list' %}" class="btn btn-outline-secondary">
+                <i class="bi bi-x-lg me-1"></i>إلغاء
+            </a>
+            <button type="submit" class="btn btn-warning fw-bold px-4">
+                <i class="bi bi-patch-check me-1"></i>
+                {% if partner %}حفظ التعديلات{% else %}إضافة الشريك{% endif %}
+            </button>
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const allSubcategories = [
+    {% for sub in subcategories %}
+    { id: "{{ sub.id }}", name: "{{ sub.name_ar }}", category: "{{ sub.category_id }}" },
+    {% endfor %}
+];
+
+const currentSubcategory = "{{ partner.subcategory_id|default:'' }}";
+
+function filterSubcategories() {
+    const catId = document.getElementById('categorySelect').value;
+    const subSelect = document.getElementById('subcategorySelect');
+    subSelect.innerHTML = '<option value="">اختر التصنيف الفرعي</option>';
+
+    const filtered = catId ? allSubcategories.filter(s => s.category === catId) : allSubcategories;
+    filtered.forEach(sub => {
+        const opt = document.createElement('option');
+        opt.value = sub.id;
+        opt.textContent = sub.name;
+        if (sub.id === currentSubcategory) opt.selected = true;
+        subSelect.appendChild(opt);
+    });
+}
+
+document.getElementById('categorySelect').addEventListener('change', filterSubcategories);
+// تشغيل عند التحميل
+filterSubcategories();
+</script>
+{% endblock %}

@@ -1,0 +1,179 @@
+{% extends 'dashboard/base.html' %}
+
+{% block page_title %}الشركاء المعتمدون{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="mb-1"><i class="bi bi-patch-check-fill text-warning me-2"></i>الشركاء المعتمدون</h4>
+        <small class="text-muted">يعطيهم الوكيل الأولوية في الاقتراح</small>
+    </div>
+    <a href="{% url 'dashboard:partner_add' %}" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1"></i> إضافة شريك
+    </a>
+</div>
+
+<!-- فلاتر البحث -->
+<div class="card mb-4">
+    <div class="card-body py-3">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <input type="text" name="q" class="form-control" placeholder="ابحث باسم الشريك أو وصفه..." value="{{ current_q }}">
+            </div>
+            <div class="col-md-3">
+                <select name="category" class="form-select">
+                    <option value="">كل التصنيفات</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if current_category == cat.id|stringformat:"s" %}selected{% endif %}>{{ cat.name_ar }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="status" class="form-select">
+                    <option value="">كل الحالات</option>
+                    <option value="active" {% if current_status == 'active' %}selected{% endif %}>نشط</option>
+                    <option value="inactive" {% if current_status == 'inactive' %}selected{% endif %}>غير نشط</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-fill">
+                    <i class="bi bi-search me-1"></i>بحث
+                </button>
+                <a href="{% url 'dashboard:partners_list' %}" class="btn btn-outline-secondary">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- إحصائيات سريعة -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card text-center">
+            <div class="stat-number text-warning">{{ partners.count }}</div>
+            <div class="text-muted">إجمالي الشركاء</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card text-center">
+            <div class="stat-number text-success">{{ partners|length }}</div>
+            <div class="text-muted">نتائج البحث</div>
+        </div>
+    </div>
+</div>
+
+{% if partners %}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-list-ul me-2"></i>قائمة الشركاء ({{ partners|length }})</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>الشريك</th>
+                    <th>التصنيف</th>
+                    <th>التصنيف الفرعي</th>
+                    <th>التقييم</th>
+                    <th>الهاتف</th>
+                    <th>ملاحظات الوكيل</th>
+                    <th>الحالة</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for partner in partners %}
+                <tr>
+                    <td>
+                        <div class="fw-bold">{{ partner.name_ar }}</div>
+                        {% if partner.name_en %}<small class="text-muted">{{ partner.name_en }}</small>{% endif %}
+                        {% if partner.description %}
+                        <div class="text-muted small mt-1" style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                            {{ partner.description }}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-primary">{{ partner.category.name_ar }}</span>
+                    </td>
+                    <td>
+                        {% if partner.subcategory %}
+                        <span class="badge bg-secondary">{{ partner.subcategory.name_ar }}</span>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if partner.rating %}
+                        <span class="text-warning fw-bold">⭐ {{ partner.rating }}</span>
+                        {% if partner.reviews_count %}
+                        <br><small class="text-muted">({{ partner.reviews_count }} تقييم)</small>
+                        {% endif %}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if partner.phone_numbers %}
+                        <a href="tel:{{ partner.phone_numbers.0 }}" class="text-decoration-none">
+                            <i class="bi bi-telephone me-1"></i>{{ partner.phone_numbers.0 }}
+                        </a>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if partner.agent_notes %}
+                        <span class="text-success small" title="{{ partner.agent_notes }}">
+                            <i class="bi bi-check-circle me-1"></i>
+                            {{ partner.agent_notes|truncatechars:40 }}
+                        </span>
+                        {% else %}
+                        <span class="text-muted small">لا توجد</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if partner.is_active %}
+                        <span class="badge bg-success">نشط</span>
+                        {% else %}
+                        <span class="badge bg-danger">معطل</span>
+                        {% endif %}
+                        {% if partner.is_verified %}
+                        <span class="badge bg-info">موثق</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            {% if partner.google_maps_url %}
+                            <a href="{{ partner.google_maps_url }}" target="_blank" class="btn btn-sm btn-outline-info" title="الموقع على الخريطة">
+                                <i class="bi bi-geo-alt"></i>
+                            </a>
+                            {% endif %}
+                            <a href="{% url 'dashboard:partner_edit' partner.pk %}" class="btn btn-sm btn-outline-primary" title="تعديل">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'dashboard:partner_delete' partner.pk %}" class="btn btn-sm btn-outline-danger" title="حذف">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body text-center py-5">
+        <i class="bi bi-patch-check display-1 text-muted mb-3"></i>
+        <h5 class="text-muted">لا يوجد شركاء{% if current_q or current_category %} بهذه الفلاتر{% endif %}</h5>
+        <p class="text-muted">الشركاء هم الذين يُقترحون أولاً من قبل الوكيل الذكي عند البحث</p>
+        <a href="{% url 'dashboard:partner_add' %}" class="btn btn-primary mt-2">
+            <i class="bi bi-plus-lg me-1"></i>أضف أول شريك
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

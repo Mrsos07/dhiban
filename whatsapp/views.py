@@ -230,7 +230,7 @@ def send_whatsapp_message(to: str, message: str):
         'to': to,
         'type': 'text',
         'text': {
-            'preview_url': False,
+            'preview_url': True,
             'body': message
         }
     }

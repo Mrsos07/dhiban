@@ -207,6 +207,12 @@ class Supplier(models.Model):
         db_index=True
     )
     
+    agent_notes = models.TextField(
+        _('ملاحظات الوكيل'),
+        blank=True,
+        help_text=_('ملاحظات خاصة يقرأها الوكيل عند اقتراح هذا المحل (مثال: متخصص في وجبات عائلية، يوفر توصيل)')
+    )
+    
     working_hours = models.JSONField(
         _('ساعات العمل'),
         default=dict,
@@ -261,3 +267,18 @@ class Supplier(models.Model):
         if self.location:
             return self.location.get('address', f"({self.location.get('lat', 0)}, {self.location.get('lng', 0)})")
         return _('غير محدد')
+
+
+class Partner(Supplier):
+    """
+    Proxy model للشركاء المعتمدين — يعرض فقط is_partner=True.
+    لا يحتاج migration — يستخدم نفس جدول Supplier.
+    """
+    class Meta:
+        proxy = True
+        verbose_name = _('شريك معتمد')
+        verbose_name_plural = _('الشركاء المعتمدون')
+
+    def save(self, *args, **kwargs):
+        self.is_partner = True
+        super().save(*args, **kwargs)

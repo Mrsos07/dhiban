@@ -224,16 +224,45 @@ class EvolutionAPI:
 
     # ─── Messaging ─────────────────────────────────────────────────────────────
 
-    def send_text(self, phone: str, message: str) -> Dict:
-        """إرسال رسالة نصية"""
+    def send_text(self, phone: str, message: str, link_preview: bool = True) -> Dict:
+        """إرسال رسالة نصية مع دعم معاينة الروابط"""
         phone = self._normalize_phone(phone)
         payload = {
             'number': phone,
             'text': message,
+            'linkPreview': link_preview,
         }
         result = self._post(f'/message/sendText/{self.instance_name}', payload)
         if not result.get('success'):
             logger.error(f"send_text failed to {phone}: {result.get('error')}")
+        return result
+
+    def send_url_button(self, phone: str, body: str, button_text: str, url: str, footer: str = '') -> Dict:
+        """
+        إرسال رسالة مع زر URL تفاعلي.
+        عند الضغط على الزر يفتح الرابط مباشرة (مثل: خريطة Google Maps).
+        يستخدم صيغة Evolution API v2: /message/sendButtons
+        """
+        phone = self._normalize_phone(phone)
+        payload = {
+            'number': phone,
+            'title': '',
+            'description': body,
+            'footer': footer,
+            'buttons': [
+                {
+                    'type': 'url',
+                    'displayText': button_text,
+                    'url': url,
+                }
+            ],
+        }
+        result = self._post(f'/message/sendButtons/{self.instance_name}', payload)
+        if not result.get('success'):
+            # fallback: نص عادي مع الرابط
+            logger.warning(f"send_url_button failed ({result.get('error')}), falling back to text")
+            fallback = f"{body}\n\n🗺️ {button_text}:\n{url}"
+            return self.send_text(phone, fallback, link_preview=True)
         return result
 
     def send_image(self, phone: str, image_url: str, caption: str = '') -> Dict:

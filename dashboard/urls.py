@@ -12,6 +12,15 @@ urlpatterns = [
     path('suppliers/<uuid:pk>/edit/', views.supplier_edit, name='supplier_edit'),
     path('suppliers/<uuid:pk>/delete/', views.supplier_delete, name='supplier_delete'),
     
+    # Partners
+    path('partners/', views.partners_list, name='partners_list'),
+    path('partners/add/', views.partner_add, name='partner_add'),
+    path('partners/<uuid:pk>/edit/', views.partner_edit, name='partner_edit'),
+    path('partners/<uuid:pk>/delete/', views.partner_delete, name='partner_delete'),
+
+    # API
+    path('api/subcategories/', views.get_subcategories_api, name='api_subcategories'),
+
     # Users
     path('users/', views.users_list, name='users_list'),
     path('users/<uuid:pk>/', views.user_detail, name='user_detail'),

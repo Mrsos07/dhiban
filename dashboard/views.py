@@ -212,6 +212,143 @@ def supplier_delete(request, pk):
 
 
 @staff_member_required
+def partners_list(request):
+    """قائمة الشركاء المعتمدين"""
+    partners = Supplier.objects.select_related('category', 'subcategory').filter(is_partner=True)
+    categories = Category.objects.filter(is_active=True).order_by('order', 'name_ar')
+
+    q = request.GET.get('q', '')
+    category = request.GET.get('category', '')
+    status = request.GET.get('status', '')
+
+    if q:
+        partners = partners.filter(Q(name_ar__icontains=q) | Q(name_en__icontains=q) | Q(description__icontains=q))
+    if category:
+        partners = partners.filter(category_id=category)
+    if status == 'active':
+        partners = partners.filter(is_active=True)
+    elif status == 'inactive':
+        partners = partners.filter(is_active=False)
+
+    partners = partners.order_by('-rating', 'name_ar')
+
+    return render(request, 'dashboard/partners_list.html', {
+        'partners': partners,
+        'categories': categories,
+        'current_q': q,
+        'current_category': category,
+        'current_status': status,
+    })
+
+
+@staff_member_required
+def partner_add(request):
+    """إضافة شريك جديد"""
+    categories = Category.objects.filter(is_active=True).order_by('order', 'name_ar')
+    subcategories = SubCategory.objects.filter(is_active=True).select_related('category')
+
+    if request.method == 'POST':
+        phone = request.POST.get('phone', '').strip()
+        lat = request.POST.get('lat', '').strip()
+        lng = request.POST.get('lng', '').strip()
+        partner = Supplier.objects.create(
+            name_ar=request.POST.get('name_ar', '').strip(),
+            name_en=request.POST.get('name_en', '').strip(),
+            description=request.POST.get('description', '').strip(),
+            agent_notes=request.POST.get('agent_notes', '').strip(),
+            category_id=request.POST.get('category'),
+            subcategory_id=request.POST.get('subcategory') or None,
+            email=request.POST.get('email', '').strip(),
+            website=request.POST.get('website', '').strip(),
+            google_maps_url=request.POST.get('google_maps_url', '').strip(),
+            google_maps_place_id=request.POST.get('google_maps_place_id', '').strip(),
+            phone_numbers=[phone] if phone else [],
+            rating=float(request.POST.get('rating') or 0),
+            reviews_count=int(request.POST.get('reviews_count') or 0),
+            location={
+                'lat': float(lat) if lat else 0,
+                'lng': float(lng) if lng else 0,
+                'address': request.POST.get('address', '').strip(),
+            },
+            is_partner=True,
+            is_verified='is_verified' in request.POST,
+            is_active='is_active' in request.POST,
+        )
+        messages.success(request, f'تم إضافة الشريك "{partner.name_ar}" بنجاح.')
+        return redirect('dashboard:partners_list')
+
+    return render(request, 'dashboard/partner_form.html', {
+        'categories': categories,
+        'subcategories': subcategories,
+    })
+
+
+@staff_member_required
+def partner_edit(request, pk):
+    """تعديل شريك"""
+    partner = get_object_or_404(Supplier, pk=pk, is_partner=True)
+    categories = Category.objects.filter(is_active=True).order_by('order', 'name_ar')
+    subcategories = SubCategory.objects.filter(is_active=True).select_related('category')
+
+    if request.method == 'POST':
+        phone = request.POST.get('phone', '').strip()
+        lat = request.POST.get('lat', '').strip()
+        lng = request.POST.get('lng', '').strip()
+        partner.name_ar = request.POST.get('name_ar', '').strip()
+        partner.name_en = request.POST.get('name_en', '').strip()
+        partner.description = request.POST.get('description', '').strip()
+        partner.agent_notes = request.POST.get('agent_notes', '').strip()
+        partner.category_id = request.POST.get('category')
+        partner.subcategory_id = request.POST.get('subcategory') or None
+        partner.email = request.POST.get('email', '').strip()
+        partner.website = request.POST.get('website', '').strip()
+        partner.google_maps_url = request.POST.get('google_maps_url', '').strip()
+        partner.google_maps_place_id = request.POST.get('google_maps_place_id', '').strip()
+        partner.phone_numbers = [phone] if phone else []
+        partner.rating = float(request.POST.get('rating') or 0)
+        partner.reviews_count = int(request.POST.get('reviews_count') or 0)
+        partner.location = {
+            'lat': float(lat) if lat else 0,
+            'lng': float(lng) if lng else 0,
+            'address': request.POST.get('address', '').strip(),
+        }
+        partner.is_partner = True
+        partner.is_verified = 'is_verified' in request.POST
+        partner.is_active = 'is_active' in request.POST
+        partner.save()
+        messages.success(request, f'تم تحديث الشريك "{partner.name_ar}" بنجاح.')
+        return redirect('dashboard:partners_list')
+
+    return render(request, 'dashboard/partner_form.html', {
+        'partner': partner,
+        'categories': categories,
+        'subcategories': subcategories,
+    })
+
+
+@staff_member_required
+def partner_delete(request, pk):
+    """حذف شريك"""
+    partner = get_object_or_404(Supplier, pk=pk, is_partner=True)
+    if request.method == 'POST':
+        name = partner.name_ar
+        partner.delete()
+        messages.success(request, f'تم حذف الشريك "{name}" بنجاح.')
+        return redirect('dashboard:partners_list')
+    return render(request, 'dashboard/partner_confirm_delete.html', {'partner': partner})
+
+
+def get_subcategories_api(request):
+    """API لجلب التصنيفات الفرعية حسب التصنيف الرئيسي"""
+    category_id = request.GET.get('category_id', '')
+    subs = SubCategory.objects.filter(is_active=True)
+    if category_id:
+        subs = subs.filter(category_id=category_id)
+    data = [{'id': str(s.id), 'name': s.name_ar} for s in subs.order_by('name_ar')]
+    return JsonResponse({'subcategories': data})
+
+
+@staff_member_required
 def users_list(request):
     """قائمة المستهلكين"""
     users = WhatsAppUser.objects.all()

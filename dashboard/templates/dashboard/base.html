@@ -280,7 +280,10 @@
             </a>
             
             <div class="nav-section-title">إدارة البيانات</div>
-            <a href="{% url 'dashboard:suppliers_list' %}" class="nav-link {% if 'supplier' in request.resolver_match.url_name %}active{% endif %}">
+            <a href="{% url 'dashboard:partners_list' %}" class="nav-link {% if 'partner' in request.resolver_match.url_name %}active{% endif %}">
+                <i class="bi bi-patch-check-fill text-warning"></i> الشركاء المعتمدون
+            </a>
+            <a href="{% url 'dashboard:suppliers_list' %}" class="nav-link {% if 'supplier' in request.resolver_match.url_name and 'partner' not in request.resolver_match.url_name %}active{% endif %}">
                 <i class="bi bi-shop"></i> الموردون
             </a>
             <a href="{% url 'dashboard:users_list' %}" class="nav-link {% if 'user' in request.resolver_match.url_name %}active{% endif %}">
