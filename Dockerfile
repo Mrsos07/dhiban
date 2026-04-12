@@ -35,5 +35,7 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Run migrations then start gunicorn
-CMD python manage.py migrate --noinput && gunicorn dhiban_project.wsgi:application --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120
+# Start script: handle migrations safely then run gunicorn
+CMD sh -c "\
+  python manage.py migrate --fake-initial --noinput && \
+  gunicorn dhiban_project.wsgi:application --bind 0.0.0.0:\$PORT --workers 2 --threads 4 --timeout 120"
