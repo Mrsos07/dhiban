@@ -36,6 +36,14 @@ USER appuser
 EXPOSE 8000
 
 # Start script: handle migrations safely then run gunicorn
+# 1) Fake all initial migrations (tables already exist in prod DB)
+# 2) Run all remaining migrations normally (e.g. new columns)
 CMD sh -c "\
-  python manage.py migrate --fake-initial --noinput && \
+  python manage.py migrate accounts     0001_initial --fake --noinput 2>/dev/null; \
+  python manage.py migrate ai_agent     0001_initial --fake --noinput 2>/dev/null; \
+  python manage.py migrate conversations 0001_initial --fake --noinput 2>/dev/null; \
+  python manage.py migrate service_requests 0001_initial --fake --noinput 2>/dev/null; \
+  python manage.py migrate suppliers    0001_initial --fake --noinput 2>/dev/null; \
+  python manage.py migrate users        0001_initial --fake --noinput 2>/dev/null; \
+  python manage.py migrate --noinput && \
   gunicorn dhiban_project.wsgi:application --bind 0.0.0.0:\$PORT --workers 2 --threads 4 --timeout 120"
