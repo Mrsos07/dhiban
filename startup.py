@@ -86,17 +86,29 @@ def smart_migrate():
             except Exception as e:
                 print(f"[startup] Warning faking {app}: {e}")
 
-    # Also check for specific columns that might be from newer migrations
-    # If a column was faked but doesn't actually exist, we need to un-fake and re-apply
-    new_columns = {
-        ('suppliers', 'suppliers_supplier', 'customer_category', '0003_add_customer_category_tags_agent_notes'),
+    # Check for specific columns from newer migrations.
+    # Case 1: column exists but migration NOT recorded -> fake it
+    # Case 2: column missing but migration IS recorded -> un-fake so it gets applied
+    new_columns = [
         ('suppliers', 'suppliers_supplier', 'google_maps_url', '0002_add_google_maps_url'),
+        ('suppliers', 'suppliers_supplier', 'customer_category', '0003_add_customer_category_tags_agent_notes'),
         ('users', 'users_whatsappuser', 'customer_category', '0002_add_customer_category_tags_agent_notes'),
-    }
+    ]
 
     for app, table, col, migration_name in new_columns:
-        if not column_exists(table, col) and (app, migration_name) in get_applied_migrations():
-            # Column doesn't exist but migration is marked as applied -> un-fake it
+        col_exists = column_exists(table, col)
+        migration_recorded = (app, migration_name) in get_applied_migrations()
+
+        if col_exists and not migration_recorded:
+            # Column already exists in DB but migration not recorded -> fake it
+            print(f"[startup] Column '{col}' exists but migration not recorded -> faking {app} {migration_name}...")
+            try:
+                call_command('migrate', app, migration_name, '--fake', '--noinput', verbosity=0)
+            except Exception as e:
+                print(f"[startup] Warning faking {app} {migration_name}: {e}")
+
+        elif not col_exists and migration_recorded:
+            # Column missing but migration marked as applied -> un-fake so migrate re-applies it
             print(f"[startup] Column '{col}' missing in '{table}' but migration recorded -> un-faking...")
             try:
                 with connection.cursor() as cursor:
