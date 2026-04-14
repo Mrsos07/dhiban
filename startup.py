@@ -92,7 +92,11 @@ def smart_migrate():
     new_columns = [
         ('suppliers', 'suppliers_supplier', 'google_maps_url', '0002_add_google_maps_url'),
         ('suppliers', 'suppliers_supplier', 'customer_category', '0003_add_customer_category_tags_agent_notes'),
+        ('suppliers', 'suppliers_supplier', 'tags', '0003_add_customer_category_tags_agent_notes'),
+        ('suppliers', 'suppliers_supplier', 'agent_notes', '0003_add_customer_category_tags_agent_notes'),
         ('users', 'users_whatsappuser', 'customer_category', '0002_add_customer_category_tags_agent_notes'),
+        ('users', 'users_whatsappuser', 'tags', '0002_add_customer_category_tags_agent_notes'),
+        ('users', 'users_whatsappuser', 'agent_notes', '0002_add_customer_category_tags_agent_notes'),
     ]
 
     for app, table, col, migration_name in new_columns:
