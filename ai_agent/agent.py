@@ -275,9 +275,14 @@ class DhibanAgent:
                 })
                 
                 # طلب من OpenAI يصيغ النتائج بأسلوبه المحادثاتي
+                # نضيف تعليمة صارمة: قدّم النتائج كما هي فقط ولا تخترع أي اسم مكان إضافي
+                messages_with_guard = messages + [{
+                    "role": "system",
+                    "content": "قدّم النتائج السابقة فقط بأسلوبك الودي. لا تضيف ولا تخترع أي اسم مطعم أو محل أو مكان لم يرد في نتيجة الأداة."
+                }]
                 final_response = self.client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=messages_with_guard,
                     temperature=temperature,
                     max_tokens=max_tokens
                 )
@@ -379,9 +384,13 @@ class DhibanAgent:
                     "content": result
                 })
                 
+                messages_with_guard = messages + [{
+                    "role": "system",
+                    "content": "قدّم النتائج السابقة فقط بأسلوبك الودي. لا تضيف ولا تخترع أي اسم مطعم أو محل أو مكان لم يرد في نتيجة الأداة."
+                }]
                 final_response = self.client.chat.completions.create(
                     model=model,
-                    messages=messages,
+                    messages=messages_with_guard,
                     temperature=temperature,
                     max_tokens=max_tokens
                 )

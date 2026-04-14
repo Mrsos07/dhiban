@@ -371,10 +371,9 @@ def process_evolution_message(msg: dict):
 
         # ── رسالة نصية عادية ──
         elif text:
-            conversation.add_message('user', text)
-            if history and history[-1].get('role') == 'user':
-                history = history[:-1]
+            # history بُني قبل add_message — لا تكرار للرسالة الحالية
             response = dhiban_agent.process_message_with_history(text, chat_history=history)
+            conversation.add_message('user', text)
 
         else:
             response = "ما فهمت رسالتك 😕 اكتب لي أو أرسل صورة!"
