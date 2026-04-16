@@ -279,14 +279,24 @@ def search_google_places(
     place_type: Optional[str] = None,
     limit: int = 5,
     save_results: bool = True,
-    category_name: str = None
+    category_name: str = None,
+    exclude_names: Optional[set] = None,
 ) -> List[Dict]:
     """
     البحث في Google Maps عن أماكن في عنيزة
     النتائج مرتبة حسب التقييم
     يتم حفظ النتائج تلقائياً في قاعدة البيانات
+    exclude_names: مجموعة أسماء سبق عرضها (لدعم طلبات "اقترح بدائل")
     """
-    places = search_nearby_places(query=query, place_type=place_type, max_results=limit)
+    # نطلب أكثر للسماح بالاستبعاد ثم نقطّع
+    request_limit = limit + (len(exclude_names) if exclude_names else 0)
+    places = search_nearby_places(
+        query=query,
+        place_type=place_type,
+        max_results=request_limit,
+        exclude_names=exclude_names,
+    )
+    places = places[:limit]
     
     results = []
     for place in places:

@@ -25,7 +25,8 @@ def search_nearby_places(
     location: Optional[Dict] = None,
     radius: int = 5000,
     place_type: Optional[str] = None,
-    max_results: int = 5
+    max_results: int = 5,
+    exclude_names: Optional[set] = None,
 ) -> List[Dict]:
     """
     البحث عن أماكن قريبة باستخدام Google Places API (New)
@@ -96,11 +97,18 @@ def search_nearby_places(
             key=lambda x: (x.get('rating', 0), x.get('userRatingCount', 0)),
             reverse=True
         )
-        
+
+        # استبعاد الأسماء التي عُرضت سابقاً (لدعم طلبات "اقترح بدائل")
+        exclude_lower = {n.strip().lower() for n in (exclude_names or set())}
+
         results = []
-        for place in sorted_places[:max_results]:
+        for place in sorted_places:
+            if len(results) >= max_results:
+                break
             display_name = place.get('displayName', {})
             name = display_name.get('text', 'غير معروف') if isinstance(display_name, dict) else str(display_name)
+            if exclude_lower and name.strip().lower() in exclude_lower:
+                continue
             
             location_data = place.get('location', {})
             opening_hours = place.get('currentOpeningHours', {})

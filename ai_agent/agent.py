@@ -10,6 +10,7 @@ from openai import OpenAI
 from .config import OPENAI_API_KEY, OPENAI_MODEL
 from .prompts import DHIBAN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT, CORE_RULES
 from .promotions import maybe_promote
+from . import search_context as sctx
 from .tools import (
     search_suppliers, search_google_places, combined_search,
     get_categories, format_search_results, format_google_results,
@@ -134,67 +135,179 @@ class DhibanAgent:
         except Exception as e:
             logger.error(f"Error saving message: {e}")
     
-    def _execute_tool(self, tool_name: str, arguments: Dict) -> str:
-        """تنفيذ الأداة المطلوبة"""
+    def _format_partner_block(self, partner: Dict) -> str:
+        """
+        تنسيق الشريك كـ "ترشيحنا المميز" يوضع كبند أول في نتائج البحث.
+        يتضمن badge واضح ليعرف المستخدم أنه شريك معتمد.
+        """
+        lines = [f"⭐ *ترشيحنا المميز — شريك معتمد*"]
+        lines.append(f"*{partner.get('name', '')}*")
+        if partner.get('rating'):
+            lines.append(f"   ⭐ {partner['rating']}/5" + (f" ({partner.get('total_ratings', 0)} تقييم)" if partner.get('total_ratings') else ''))
+        if partner.get('agent_notes'):
+            lines.append(f"   📝 {partner['agent_notes']}")
+        if partner.get('address'):
+            lines.append(f"   📍 {partner['address']}")
+        if partner.get('phone'):
+            lines.append(f"   📞 {partner['phone']}")
+        if partner.get('maps_url'):
+            lines.append(f"   🗺️ الموقع:\n{partner['maps_url']}")
+        return "\n".join(lines)
+
+    def _extract_names_from_result(self, result_text: str) -> List[str]:
+        """استخراج أسماء الأماكن من نص نتيجة الأداة (لتسجيل ما عُرض)."""
+        import re
+        if not result_text:
+            return []
+        # الأسماء بصيغة *اسم* على سطر منفصل (بعد الرقم أو في البداية)
+        pattern = r'\*([^*\n]{2,80})\*'
+        names = re.findall(pattern, result_text)
+        # فلترة كلمات غير اسم مكان
+        noise = {'ترشيحنا المميز', 'شريك معتمد', 'خطتك اليومية في عنيزة', 'ملاحظة'}
+        return [n.strip() for n in names if n.strip() and n.strip() not in noise]
+
+    def _execute_tool(
+        self,
+        tool_name: str,
+        arguments: Dict,
+        user_id: Optional[str] = None,
+        user_message: str = '',
+    ) -> str:
+        """
+        تنفيذ الأداة المطلوبة — مع:
+          • دعم "اقترح بدائل": استبعاد الأسماء التي عُرضت سابقاً
+          • حقن شريك واحد معتمد (لو متوفر للفئة) في بداية النتائج
+          • تسجيل الأسماء المعروضة في سياق المستخدم
+        """
         try:
+            # كشف طلب البدائل + جلب الاستبعادات
+            is_alt = sctx.is_alternatives_request(user_message)
+            exclusions = sctx.get_exclusions(user_id) if is_alt else set()
+
+            def _finalize_with_partner(result_text: str, category_hint: str) -> str:
+                """يضيف شريكاً معتمداً واحداً في رأس النتائج (لو متوفر)، ويسجّل الأسماء."""
+                # الشريك يُحقن فقط لو ما كان هذا طلب بدائل أصلاً لنفس الشريك
+                partner = sctx.find_best_partner(
+                    category=category_hint,
+                    user_phone=user_id,
+                )
+                if partner and partner.get('name') and partner['name'] not in (result_text or ''):
+                    block = self._format_partner_block(partner)
+                    result_text = f"{block}\n\n{result_text}"
+                    # تسجيل الترشيح في جدول PartnerPromotion للإحصاء
+                    sctx.record_partner_promotion(
+                        user_phone=user_id,
+                        partner_id=partner.get('_partner_id', ''),
+                        category=category_hint,
+                        user_message=user_message,
+                    )
+                    logger.info(f"[AGENT] Injected partner '{partner['name']}' into {tool_name} results")
+
+                # تسجيل كل الأسماء المعروضة (للاستبعاد في الطلب القادم)
+                shown = self._extract_names_from_result(result_text)
+                if shown:
+                    sctx.record_search(user_id, category_hint, shown)
+                return result_text
+
             if tool_name == "search_suppliers":
                 results = search_suppliers(
                     category_name=arguments.get("category_name"),
                     keywords=arguments.get("keywords"),
                     is_partner=arguments.get("is_partner")
                 )
+                if exclusions and results:
+                    results = [r for r in results if r.get('name', '').strip() not in exclusions]
                 if results:
-                    return format_search_results({'database_results': results, 'google_results': [], 'total': len(results)})
+                    formatted = format_search_results(
+                        {'database_results': results, 'google_results': [], 'total': len(results)}
+                    )
+                    category = arguments.get("category_name") or (
+                        arguments.get("keywords", [''])[0] if arguments.get("keywords") else ''
+                    )
+                    return _finalize_with_partner(formatted, category)
                 return "لم أجد نتائج في قاعدة البيانات."
-            
+
             elif tool_name == "search_google_places":
                 query = arguments.get("query", "")
                 results = search_google_places(
                     query=query,
                     place_type=arguments.get("place_type"),
-                    limit=5
+                    limit=5,
+                    exclude_names=exclusions if exclusions else None,
                 )
                 if results:
-                    return format_google_results(results, query)
+                    formatted = format_google_results(results, query)
+                    # استنتاج الفئة للشريك
+                    category = arguments.get("place_type") or query
+                    # تحويل place_type (إنجليزي) إلى عربي تقريبي
+                    category_map = {
+                        'restaurant': 'مطعم', 'cafe': 'كافيه', 'pharmacy': 'صيدلية',
+                        'bakery': 'مخبز', 'supermarket': 'سوبرماركت',
+                    }
+                    category = category_map.get(category, category)
+                    return _finalize_with_partner(formatted, category)
+                if exclusions:
+                    return f"ما لقيت خيارات جديدة غير اللي ذكرتها قبل لـ '{query}' 😕 تبي أوسّع البحث أو أغيّر الكلمات؟"
                 return f"لم أجد نتائج لـ '{query}' في Google Maps."
-            
+
             elif tool_name == "combined_search":
+                query = arguments.get("query", "")
                 results = combined_search(
-                    query=arguments.get("query", ""),
+                    query=query,
                     category=arguments.get("category"),
-                    keywords=arguments.get("keywords")
+                    keywords=arguments.get("keywords"),
                 )
-                return format_search_results(results, arguments.get("query", ""))
-            
+                # استبعاد من نتائج DB + Google عند طلب البدائل
+                if exclusions:
+                    results['database_results'] = [
+                        r for r in results.get('database_results', [])
+                        if r.get('name', '').strip() not in exclusions
+                    ]
+                    results['google_results'] = [
+                        r for r in results.get('google_results', [])
+                        if r.get('name', '').strip() not in exclusions
+                    ]
+                formatted = format_search_results(results, query)
+                category = arguments.get("category") or query
+                return _finalize_with_partner(formatted, category)
+
             elif tool_name == "get_categories":
                 categories = get_categories()
                 if categories:
                     cat_list = "\n".join([f"- {c['name_ar']}" for c in categories])
                     return f"التصنيفات المتاحة:\n{cat_list}"
                 return "لا توجد تصنيفات متاحة حاليا"
-            
+
             elif tool_name == "build_daily_plan":
                 result = build_daily_plan(
                     activities=arguments.get("activities"),
                     plan_type=arguments.get("plan_type", "daily"),
                     preferences=arguments.get("preferences")
                 )
+                # تسجيل الأسماء من الخطة لمنع التكرار في طلبات لاحقة
+                shown = self._extract_names_from_result(result)
+                if shown and user_id:
+                    sctx.record_search(user_id, 'plan', shown)
                 return result
-            
+
             else:
                 return f"أداة غير معروفة: {tool_name}"
-        
+
         except Exception as e:
-            logger.error(f"Tool execution error: {e}")
+            logger.error(f"Tool execution error: {e}", exc_info=True)
             return f"حدث خطأ أثناء البحث."
     
     def _inject_promotion(self, bot_response: str, user_message: str, user_id: Optional[str]) -> str:
         """
-        يحقن ترشيح شريك ذكي بعد الرد إذا كانت الشروط مناسبة (فئة متطابقة، cooldown، تدوير).
-        لا يؤثر على الرد لو الشروط ما اكتملت — يرجع الرد كما هو.
+        يحقن ترشيح شريك ذكي بعد الرد في حال لم يكن الشريك مدمجاً أصلاً في النتائج.
+        الشريك الأساسي يُحقن داخل نتائج البحث عبر _execute_tool، فإذا سبق حقنه نتخطى.
+        هذا الـ hook يعمل فقط للردود الحوارية البحتة (بدون tool call).
         """
         try:
             if not user_id or not bot_response:
+                return bot_response
+            # لو الرد أصلاً يحتوي شريكاً معتمداً (من نتائج الأداة)، لا نضيف ترويجاً ثانياً
+            if 'ترشيحنا المميز' in bot_response or 'شريك معتمد' in bot_response:
                 return bot_response
             promo = maybe_promote(user_id, user_message or '', bot_response)
             if promo:
@@ -262,7 +375,7 @@ class DhibanAgent:
                 arguments = json.loads(tool_call.function.arguments)
                 
                 logger.info(f"[AGENT] Tool call: {tool_name} | args: {arguments}")
-                result = self._execute_tool(tool_name, arguments)
+                result = self._execute_tool(tool_name, arguments, user_id=user_id, user_message=user_message)
                 logger.info(f"[AGENT] Tool result length: {len(result)} | preview: {repr(result[:200])}")
                 
                 # إذا لم نجد في الموردين ابحث في Google تلقائياً
@@ -385,7 +498,7 @@ class DhibanAgent:
                 arguments = json.loads(tool_call.function.arguments)
                 
                 logger.info(f"[AGENT-WA] Tool call: {tool_name} | args: {arguments}")
-                result = self._execute_tool(tool_name, arguments)
+                result = self._execute_tool(tool_name, arguments, user_id=user_id, user_message=user_message)
                 logger.info(f"[AGENT-WA] Tool result length: {len(result)} | preview: {repr(result[:200])}")
                 
                 if tool_name == "search_suppliers" and "لم أجد" in result:
