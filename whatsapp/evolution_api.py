@@ -69,10 +69,18 @@ class EvolutionAPI:
         try:
             resp = httpx.delete(url, headers=self._headers(), timeout=self.timeout)
             resp.raise_for_status()
-            return {'success': True, 'data': resp.json()}
+            try:
+                return {'success': True, 'data': resp.json()}
+            except Exception:
+                return {'success': True, 'data': {}}
         except Exception as e:
-            logger.error(f"Evolution API DELETE error [{path}]: {e}")
-            return {'success': False, 'error': str(e)}
+            status = getattr(getattr(e, 'response', None), 'status_code', None)
+            try:
+                body = e.response.json() if hasattr(e, 'response') and e.response else {}
+            except Exception:
+                body = {}
+            logger.error(f"Evolution API DELETE error [{path}] HTTP {status}: {e}")
+            return {'success': False, 'error': str(e), 'status': status, 'body': body}
 
     # ─── Instance Management ───────────────────────────────────────────────────
 
@@ -186,8 +194,39 @@ class EvolutionAPI:
         return None
 
     def logout_instance(self) -> Dict:
-        """قطع الاتصال (logout)"""
-        return self._delete(f'/instance/logout/{self.instance_name}')
+        """
+        قطع الاتصال (logout) — متسامح مع HTTP 500.
+        Evolution v2 يُرجع 500 أحياناً عندما يكون الـ instance غير متصل أصلاً
+        أو عند إغلاق socket مغلق. نعتبر العملية ناجحة لو أصبح الـ instance
+        فعلياً غير متصل بعد المحاولة.
+        """
+        result = self._delete(f'/instance/logout/{self.instance_name}')
+        if result.get('success'):
+            return result
+
+        status = result.get('status')
+        body = result.get('body') or {}
+        # 404 = مش موجود، 500 من Evolution غالباً = socket مغلق أصلاً
+        if status in (404, 500):
+            try:
+                if not self.is_connected():
+                    logger.info(
+                        f"[EVOLUTION-API] logout returned {status} but instance is already "
+                        f"disconnected — treating as success."
+                    )
+                    return {
+                        'success': True,
+                        'data': {'message': 'instance already disconnected', 'status': status},
+                    }
+            except Exception as e:
+                logger.warning(f"[EVOLUTION-API] is_connected check failed after logout {status}: {e}")
+
+        # نضيف نص الخطأ من body لو متاح لتسهيل التشخيص
+        err_msg = result.get('error') or ''
+        if isinstance(body, dict) and body.get('message'):
+            err_msg = f"{err_msg} | server: {body.get('message')}"
+        result['error'] = err_msg
+        return result
 
     def delete_instance(self) -> Dict:
         """حذف الـ instance"""

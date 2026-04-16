@@ -592,13 +592,31 @@ def whatsapp_connect(request):
 @staff_member_required
 @require_http_methods(['POST'])
 def whatsapp_disconnect(request):
-    """قطع اتصال الواتساب"""
+    """قطع اتصال الواتساب — مع معالجة ذكية لأخطاء Evolution API"""
     from whatsapp.evolution_api import evolution_api
     result = evolution_api.logout_instance()
+
     if result.get('success'):
-        messages.success(request, 'تم قطع اتصال الواتساب بنجاح.')
+        data = result.get('data') or {}
+        if isinstance(data, dict) and data.get('message') == 'instance already disconnected':
+            messages.info(request, 'الـ instance كان غير متصل أصلاً — تم تأكيد قطع الاتصال.')
+        else:
+            messages.success(request, 'تم قطع اتصال الواتساب بنجاح.')
+        return redirect('dashboard:whatsapp_connect')
+
+    # فشل فعلي — نوضح السبب
+    status = result.get('status')
+    err = result.get('error', 'خطأ غير معروف')
+    if status == 500:
+        messages.error(
+            request,
+            'Evolution API أرجع خطأ داخلي (500). غالباً الـ instance في حالة غير طبيعية. '
+            'جرّب إعادة تشغيل الـ instance أو حذفه وإعادة إنشائه.'
+        )
+    elif status == 404:
+        messages.warning(request, 'الـ instance غير موجود على Evolution API — لا شيء لقطعه.')
     else:
-        messages.error(request, f"فشل قطع الاتصال: {result.get('error', 'خطأ غير معروف')}")
+        messages.error(request, f"فشل قطع الاتصال: {err}")
     return redirect('dashboard:whatsapp_connect')
 
 
