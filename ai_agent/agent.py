@@ -8,7 +8,7 @@ from typing import Optional, Dict, List
 from openai import OpenAI
 
 from .config import OPENAI_API_KEY, OPENAI_MODEL
-from .prompts import DHIBAN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
+from .prompts import DHIBAN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT, CORE_RULES
 from .tools import (
     search_suppliers, search_google_places, combined_search,
     get_categories, format_search_results, format_google_results,
@@ -214,8 +214,10 @@ class DhibanAgent:
             self._save_message(user_id, 'user', user_message)
             
             # بناء الرسائل مع الذاكرة (آخر 5 رسائل)
+            # CORE_RULES يوضع أخيراً كي يطغى على أي تعليمات مخففة في DB prompt
             messages = [
-                {"role": "system", "content": system_prompt}
+                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": CORE_RULES},
             ]
             
             # إضافة تاريخ المحادثة كاملاً
@@ -278,12 +280,19 @@ class DhibanAgent:
                 # نضيف تعليمة صارمة: قدّم النتائج كما هي فقط ولا تخترع أي اسم مكان إضافي
                 messages_with_guard = messages + [{
                     "role": "system",
-                    "content": "قدّم النتائج السابقة فقط بأسلوبك الودي. لا تضيف ولا تخترع أي اسم مطعم أو محل أو مكان لم يرد في نتيجة الأداة."
+                    "content": (
+                        "قدّم فقط الأماكن/الأسماء التي وردت حرفياً في نتيجة الأداة أعلاه. "
+                        "ممنوع منعاً باتاً إضافة أي اسم مطعم/محل/كافيه/مكان غير موجود في النتيجة. "
+                        "ممنوع تخمين أرقام هواتف أو عناوين أو تقييمات. "
+                        "إذا النتيجة فارغة قل بصراحة إنك ما لقيت واسأل المستخدم إذا يبي تجرب بحث ثاني."
+                    )
                 }]
+                # temperature منخفضة في مرحلة التنسيق لتقليل الاختراع
+                format_temp = min(float(temperature), 0.3)
                 final_response = self.client.chat.completions.create(
                     model=model,
                     messages=messages_with_guard,
-                    temperature=temperature,
+                    temperature=format_temp,
                     max_tokens=max_tokens
                 )
                 bot_response = final_response.choices[0].message.content
@@ -328,7 +337,10 @@ class DhibanAgent:
             temperature = float(db_settings.temperature) if db_settings else 0.9
             max_tokens = int(db_settings.max_tokens) if db_settings else 800
             
-            messages = [{"role": "system", "content": system_prompt}]
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": CORE_RULES},
+            ]
             
             if chat_history:
                 messages.extend(chat_history)
@@ -386,12 +398,18 @@ class DhibanAgent:
                 
                 messages_with_guard = messages + [{
                     "role": "system",
-                    "content": "قدّم النتائج السابقة فقط بأسلوبك الودي. لا تضيف ولا تخترع أي اسم مطعم أو محل أو مكان لم يرد في نتيجة الأداة."
+                    "content": (
+                        "قدّم فقط الأماكن/الأسماء التي وردت حرفياً في نتيجة الأداة أعلاه. "
+                        "ممنوع منعاً باتاً إضافة أي اسم مطعم/محل/كافيه/مكان غير موجود في النتيجة. "
+                        "ممنوع تخمين أرقام هواتف أو عناوين أو تقييمات. "
+                        "إذا النتيجة فارغة قل بصراحة إنك ما لقيت واسأل المستخدم إذا يبي تجرب بحث ثاني."
+                    )
                 }]
+                format_temp = min(float(temperature), 0.3)
                 final_response = self.client.chat.completions.create(
                     model=model,
                     messages=messages_with_guard,
-                    temperature=temperature,
+                    temperature=format_temp,
                     max_tokens=max_tokens
                 )
                 bot_response = final_response.choices[0].message.content
