@@ -9,6 +9,7 @@ from openai import OpenAI
 
 from .config import OPENAI_API_KEY, OPENAI_MODEL
 from .prompts import DHIBAN_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT, CORE_RULES
+from .promotions import maybe_promote
 from .tools import (
     search_suppliers, search_google_places, combined_search,
     get_categories, format_search_results, format_google_results,
@@ -187,6 +188,21 @@ class DhibanAgent:
             logger.error(f"Tool execution error: {e}")
             return f"حدث خطأ أثناء البحث."
     
+    def _inject_promotion(self, bot_response: str, user_message: str, user_id: Optional[str]) -> str:
+        """
+        يحقن ترشيح شريك ذكي بعد الرد إذا كانت الشروط مناسبة (فئة متطابقة، cooldown، تدوير).
+        لا يؤثر على الرد لو الشروط ما اكتملت — يرجع الرد كما هو.
+        """
+        try:
+            if not user_id or not bot_response:
+                return bot_response
+            promo = maybe_promote(user_id, user_message or '', bot_response)
+            if promo:
+                return f"{bot_response}\n\n{promo}"
+        except Exception as e:
+            logger.error(f"[AGENT] Promotion injection failed (non-fatal): {e}")
+        return bot_response
+
     def process_message(self, user_message: str, user_id: str = None) -> str:
         """
         معالجة رسالة المستخدم باستخدام OpenAI فقط
@@ -301,6 +317,7 @@ class DhibanAgent:
                 if not bot_response:
                     bot_response = result  # fallback to raw result
                 
+                bot_response = self._inject_promotion(bot_response, user_message, user_id)
                 self._save_message(user_id, 'bot', bot_response)
                 return bot_response
             
@@ -310,6 +327,7 @@ class DhibanAgent:
             if not bot_response:
                 bot_response = "ها يالغالي؟ وضح لي شوي وش تبي بالضبط 🐺"
             
+            bot_response = self._inject_promotion(bot_response, user_message, user_id)
             self._save_message(user_id, 'bot', bot_response)
             return bot_response
         
@@ -319,7 +337,7 @@ class DhibanAgent:
             self._save_message(user_id, 'bot', error_response)
             return error_response
     
-    def process_message_with_history(self, user_message: str, chat_history: List[Dict]) -> str:
+    def process_message_with_history(self, user_message: str, chat_history: List[Dict], user_id: str = None) -> str:
         """
         معالجة رسالة مع تاريخ محادثة مُمرَّر مباشرة.
         يُستخدم من الويب والواتساب (Evolution API).
@@ -417,13 +435,13 @@ class DhibanAgent:
                 
                 if not bot_response:
                     bot_response = result
-                return bot_response
+                return self._inject_promotion(bot_response, user_message, user_id)
             
             bot_response = assistant_message.content
             logger.info(f"[AGENT-WA] Direct OpenAI (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
                 bot_response = "ها يالغالي؟ خبرني وش تبي بالضبط"
-            return bot_response
+            return self._inject_promotion(bot_response, user_message, user_id)
         
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
@@ -640,7 +658,7 @@ class DhibanAgent:
             
             # معالجة النص كرسالة عادية
             if chat_history is not None:
-                return self.process_message_with_history(text, chat_history)
+                return self.process_message_with_history(text, chat_history, user_id=user_id)
             else:
                 return self.process_message(text, user_id)
             

@@ -104,3 +104,58 @@ class AgentSettings(models.Model):
     @classmethod
     def get_active(cls):
         return cls.objects.filter(is_active=True).first()
+
+
+class PartnerPromotion(models.Model):
+    """
+    سجل ترشيحات الشركاء — يتتبع متى وأي شريك تم ترشيحه لأي مستخدم.
+    يُستخدم لمنع تكرار نفس الشريك لنفس المستخدم، وتدوير الترشيحات،
+    وقياس معدلات الظهور/التفاعل.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user_phone = models.CharField(
+        _('رقم جوال المستخدم'),
+        max_length=30,
+        db_index=True,
+    )
+
+    partner = models.ForeignKey(
+        'suppliers.Supplier',
+        on_delete=models.CASCADE,
+        related_name='promotions',
+        verbose_name=_('الشريك'),
+    )
+
+    context_keyword = models.CharField(
+        _('الكلمة/الفئة السياقية'),
+        max_length=100,
+        blank=True,
+        help_text=_('الفئة أو الكلمة التي أطلقت الترشيح (مطعم، كافيه، سباك...)')
+    )
+
+    user_message = models.TextField(
+        _('رسالة المستخدم'),
+        blank=True,
+        help_text=_('مقتطف من رسالة المستخدم التي أدّت للترشيح')
+    )
+
+    was_clicked = models.BooleanField(
+        _('تم التفاعل؟'),
+        default=False,
+        help_text=_('هل ضغط المستخدم على الرابط أو تواصل لاحقاً؟')
+    )
+
+    created_at = models.DateTimeField(_('وقت الترشيح'), auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = _('ترشيح شريك')
+        verbose_name_plural = _('ترشيحات الشركاء')
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user_phone', '-created_at']),
+            models.Index(fields=['partner', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.partner.name_ar} → {self.user_phone} @ {self.created_at:%Y-%m-%d %H:%M}"

@@ -372,7 +372,7 @@ def process_evolution_message(msg: dict):
         # ── رسالة نصية عادية ──
         elif text:
             # history بُني قبل add_message — لا تكرار للرسالة الحالية
-            response = dhiban_agent.process_message_with_history(text, chat_history=history)
+            response = dhiban_agent.process_message_with_history(text, chat_history=history, user_id=phone_number)
             conversation.add_message('user', text)
 
         else:

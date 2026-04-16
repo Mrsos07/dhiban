@@ -540,7 +540,7 @@ def agent_chat(request):
         chat_history = data.get('history', [])
         
         # معالجة الرسالة مع التاريخ
-        response = dhiban_agent.process_message_with_history(message, chat_history)
+        response = dhiban_agent.process_message_with_history(message, chat_history, user_id=data.get('user_id'))
         
         return JsonResponse({'response': response})
     
