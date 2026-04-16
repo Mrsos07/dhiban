@@ -380,6 +380,11 @@ class EvolutionAPI:
         logger.error(f"[EVOLUTION-API] Both webhook formats failed! wrapped={result.get('error')} flat={result2.get('error')}")
         return result
 
+    def find_webhook(self) -> Dict:
+        """جلب إعدادات webhook الحالية من Evolution API للتشخيص"""
+        result = self._get(f'/webhook/find/{self.instance_name}')
+        return result
+
     # ─── Helpers ───────────────────────────────────────────────────────────────
 
     @staticmethod
