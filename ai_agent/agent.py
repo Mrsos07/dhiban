@@ -185,23 +185,54 @@ class DhibanAgent:
             exclusions = sctx.get_exclusions(user_id) if is_alt else set()
 
             def _finalize_with_partner(result_text: str, category_hint: str) -> str:
-                """يضيف شريكاً معتمداً واحداً في رأس النتائج (لو متوفر)، ويسجّل الأسماء."""
-                # الشريك يُحقن فقط لو ما كان هذا طلب بدائل أصلاً لنفس الشريك
-                partner = sctx.find_best_partner(
+                """
+                يضيف:
+                  1) شريكاً معتمداً رئيسياً في رأس النتائج (لو توفر للفئة)
+                  2) شريكاً مرافقاً من فئة قريبة في ذيل الرد (cross-sell ذكي)
+                ثم يسجّل الأسماء المعروضة.
+                """
+                main_partner = sctx.find_best_partner(
                     category=category_hint,
                     user_phone=user_id,
                 )
-                if partner and partner.get('name') and partner['name'] not in (result_text or ''):
-                    block = self._format_partner_block(partner)
+                main_partner_id = None
+                if main_partner and main_partner.get('name') and main_partner['name'] not in (result_text or ''):
+                    block = self._format_partner_block(main_partner)
                     result_text = f"{block}\n\n{result_text}"
-                    # تسجيل الترشيح في جدول PartnerPromotion للإحصاء
+                    main_partner_id = main_partner.get('_partner_id', '')
                     sctx.record_partner_promotion(
                         user_phone=user_id,
-                        partner_id=partner.get('_partner_id', ''),
+                        partner_id=main_partner_id,
                         category=category_hint,
                         user_message=user_message,
                     )
-                    logger.info(f"[AGENT] Injected partner '{partner['name']}' into {tool_name} results")
+                    logger.info(f"[AGENT] Injected main partner '{main_partner['name']}' for '{category_hint}'")
+
+                # 2) اقتراح شريك مرافق من فئة مكمّلة (cross-sell)
+                # مثال: المستخدم طلب مطعم → نقترح سوبرماركت/كافيه شريك
+                try:
+                    companion = sctx.find_companion_partner(
+                        current_category=category_hint,
+                        user_phone=user_id,
+                        exclude_partner_id=main_partner_id,
+                    )
+                    if companion and companion.get('partner'):
+                        comp_partner = companion['partner']
+                        if comp_partner.get('name') and comp_partner['name'] not in result_text:
+                            comp_block = sctx.format_companion_block(companion)
+                            result_text = f"{result_text}\n{comp_block}"
+                            sctx.record_partner_promotion(
+                                user_phone=user_id,
+                                partner_id=comp_partner.get('_partner_id', ''),
+                                category=companion.get('companion_category', ''),
+                                user_message=f"[companion:{category_hint}] {user_message}",
+                            )
+                            logger.info(
+                                f"[AGENT] Injected companion partner '{comp_partner['name']}' "
+                                f"({companion.get('companion_category')}) after {category_hint}"
+                            )
+                except Exception as e:
+                    logger.error(f"[AGENT] companion injection failed (non-fatal): {e}")
 
                 # تسجيل كل الأسماء المعروضة (للاستبعاد في الطلب القادم)
                 shown = self._extract_names_from_result(result_text)
