@@ -99,78 +99,146 @@ def clear_context(user_id: str):
 
 
 # ─── Partner selection ─────────────────────────────────────────────────────
+def _supplier_to_result_dict(partner, fallback_category: str = '') -> Dict:
+    """تحويل كائن Supplier إلى dict متوافق مع تنسيق نتائج البحث."""
+    loc = partner.location if isinstance(partner.location, dict) else {}
+    maps_url = partner.google_maps_url or ''
+    if not maps_url and loc.get('lat') and loc.get('lng'):
+        maps_url = f"https://www.google.com/maps/search/?api=1&query={loc['lat']},{loc['lng']}"
+    return {
+        '_partner_id': str(partner.id),
+        'name': partner.name_ar,
+        'rating': float(partner.rating or 0),
+        'total_ratings': int(partner.reviews_count or 0),
+        'address': loc.get('address', ''),
+        'location': loc,
+        'phone': partner.get_primary_phone() or '',
+        'maps_url': maps_url,
+        'is_partner': True,
+        'agent_notes': partner.agent_notes or '',
+        'category': partner.category.name_ar if partner.category else fallback_category,
+        'source': 'partner',
+    }
+
+
 def find_best_partner(
     category: str,
     exclude_ids: Optional[set] = None,
     user_phone: Optional[str] = None,
+    specific_terms: Optional[List[str]] = None,
 ) -> Optional[Dict]:
     """
-    يختار "الشريك الواحد المناسب" للفئة الحالية.
-    - is_partner=True
-    - أعلى تقييم
-    - مستبعد من exclude_ids (مثلاً شركاء ظهروا مؤخراً لنفس المستخدم)
-    - يطابق على أي كلمة من الـ category (مثلاً "مطعم مندي" → يطابق category=مطعم)
-    يرجع dict متوافق مع تنسيق نتائج البحث أو None.
+    يختار شريكاً مناسباً للفئة الحالية بذكاء وتنويع:
+      1) يحاول المطابقة الدقيقة أولاً (specific_terms مثل "بروست"، "مندي"، "بيتزا")
+         على name/subcategory/services/description.
+      2) لو ما لقى، يفتح البحث على الفئة الأعم (tokens من category).
+      3) يستبعد الشركاء المرشّحين لنفس المستخدم خلال آخر 7 أيام (تنويع).
+      4) يختار عشوائياً من أفضل 5 مرشحين (بدل إعادة نفس الشريك دائماً).
+
+    Args:
+        category: الفئة الأساسية (مثلاً "مطعم")
+        specific_terms: كلمات مفتاحية محددة من طلب المستخدم (مثلاً ["بروست"])
+        exclude_ids: معرّفات شركاء يجب استبعادهم
+        user_phone: لتطبيق فلتر "ما رُشّح مؤخراً"
     """
-    if not category:
+    import random
+    if not category and not specific_terms:
         return None
     try:
         from suppliers.models import Supplier
-        # نقسّم category إلى كلمات ونبني OR filter على كل كلمة (≥3 حروف)
-        tokens = [t.strip() for t in re.split(r'\s+', category) if len(t.strip()) >= 3]
-        if not tokens:
-            tokens = [category.strip()]
 
-        match_filter = Q()
-        for tok in tokens:
-            match_filter |= (
-                Q(category__name_ar__icontains=tok) |
-                Q(category__name_en__icontains=tok) |
-                Q(subcategory__name_ar__icontains=tok) |
-                Q(services__icontains=tok) |
-                Q(description__icontains=tok)
-            )
-        qs = Supplier.objects.filter(is_partner=True, is_active=True).filter(match_filter)
-        if exclude_ids:
-            qs = qs.exclude(id__in=list(exclude_ids))
+        # توكنات الفئة (≥ 3 حروف)
+        cat_tokens = [t.strip() for t in re.split(r'\s+', (category or '')) if len(t.strip()) >= 3]
+        specific_terms = [t.strip() for t in (specific_terms or []) if t and len(t.strip()) >= 2]
 
-        # استبعاد الشركاء الذين رُشّحوا لهذا المستخدم خلال 24 ساعة
+        exclude_list: Set[str] = set(str(x) for x in (exclude_ids or []))
+
+        # استبعاد الشركاء المرشّحين خلال آخر 7 أيام (تنويع أفضل للمستخدم)
         if user_phone:
             try:
                 from .models import PartnerPromotion
                 recent = PartnerPromotion.objects.filter(
                     user_phone=user_phone,
-                    created_at__gte=datetime.utcnow() - timedelta(hours=24),
+                    created_at__gte=datetime.utcnow() - timedelta(days=7),
                 ).values_list('partner_id', flat=True)
-                if recent:
-                    qs = qs.exclude(id__in=list(recent))
+                for pid in recent:
+                    exclude_list.add(str(pid))
             except Exception as e:
                 logger.debug(f"[SEARCH-CTX] promotion exclude failed: {e}")
 
-        partner = qs.order_by('-rating', '-reviews_count').first()
+        base_qs = Supplier.objects.filter(is_partner=True, is_active=True)
+        if exclude_list:
+            base_qs = base_qs.exclude(id__in=list(exclude_list))
+
+        partner = None
+
+        # ─── طبقة 1: مطابقة دقيقة بالمصطلحات المحددة (بروست/مندي/بيتزا/...) ───
+        if specific_terms:
+            specific_filter = Q()
+            for term in specific_terms:
+                specific_filter |= (
+                    Q(name_ar__icontains=term) |
+                    Q(subcategory__name_ar__icontains=term) |
+                    Q(services__icontains=term) |
+                    Q(description__icontains=term)
+                )
+            specific_qs = base_qs.filter(specific_filter)
+            # أفضل 5 بالتقييم ثم اختيار عشوائي
+            top_specific = list(specific_qs.order_by('-rating', '-reviews_count')[:5])
+            if top_specific:
+                partner = random.choice(top_specific)
+                logger.info(f"[SEARCH-CTX] Specific-match partner '{partner.name_ar}' "
+                            f"(terms={specific_terms}, pool={len(top_specific)})")
+
+        # ─── طبقة 2: مطابقة الفئة العامة لو ما لقينا مطابقة دقيقة ───
+        if not partner and cat_tokens:
+            cat_filter = Q()
+            for tok in cat_tokens:
+                cat_filter |= (
+                    Q(category__name_ar__icontains=tok) |
+                    Q(category__name_en__icontains=tok) |
+                    Q(subcategory__name_ar__icontains=tok) |
+                    Q(services__icontains=tok) |
+                    Q(description__icontains=tok)
+                )
+            cat_qs = base_qs.filter(cat_filter)
+            top_cat = list(cat_qs.order_by('-rating', '-reviews_count')[:5])
+            if top_cat:
+                partner = random.choice(top_cat)
+                logger.info(f"[SEARCH-CTX] Category-match partner '{partner.name_ar}' "
+                            f"(tokens={cat_tokens}, pool={len(top_cat)})")
+
+        # ─── طبقة 3: تراخي الـ 7 أيام لو كل الشركاء مُستبعدين ───
+        if not partner and (cat_tokens or specific_terms):
+            relax_qs = Supplier.objects.filter(is_partner=True, is_active=True)
+            if exclude_ids:
+                relax_qs = relax_qs.exclude(id__in=list(exclude_ids))
+            relax_filter = Q()
+            for term in (specific_terms or []) + cat_tokens:
+                relax_filter |= (
+                    Q(name_ar__icontains=term) |
+                    Q(category__name_ar__icontains=term) |
+                    Q(subcategory__name_ar__icontains=term) |
+                    Q(services__icontains=term) |
+                    Q(description__icontains=term)
+                )
+            relax_qs = relax_qs.filter(relax_filter)
+            # اختر الأقل ترشيحاً مؤخراً (تدوير)
+            try:
+                from .models import PartnerPromotion
+                from django.db.models import Max, OuterRef, Subquery
+                top_relax = list(relax_qs.order_by('-rating', '-reviews_count')[:5])
+                if top_relax:
+                    partner = random.choice(top_relax)
+                    logger.info(f"[SEARCH-CTX] Relaxed partner '{partner.name_ar}' "
+                                f"(no fresh candidate in 7 days)")
+            except Exception:
+                partner = relax_qs.order_by('-rating').first()
+
         if not partner:
             return None
 
-        # بناء dict مطابق لتنسيق search results (لتمريره مباشرة للـ formatter)
-        loc = partner.location if isinstance(partner.location, dict) else {}
-        maps_url = partner.google_maps_url or ''
-        if not maps_url and loc.get('lat') and loc.get('lng'):
-            maps_url = f"https://www.google.com/maps/search/?api=1&query={loc['lat']},{loc['lng']}"
-
-        return {
-            '_partner_id': str(partner.id),
-            'name': partner.name_ar,
-            'rating': float(partner.rating or 0),
-            'total_ratings': int(partner.reviews_count or 0),
-            'address': loc.get('address', ''),
-            'location': loc,
-            'phone': partner.get_primary_phone() or '',
-            'maps_url': maps_url,
-            'is_partner': True,
-            'agent_notes': partner.agent_notes or '',
-            'category': partner.category.name_ar if partner.category else category,
-            'source': 'partner',
-        }
+        return _supplier_to_result_dict(partner, fallback_category=category)
     except Exception as e:
         logger.error(f"[SEARCH-CTX] find_best_partner error: {e}", exc_info=True)
         return None

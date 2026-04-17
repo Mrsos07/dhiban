@@ -23,35 +23,83 @@ def search_suppliers(
     category_name: Optional[str] = None,
     keywords: Optional[List[str]] = None,
     is_partner: Optional[bool] = None,
-    limit: int = 5
+    limit: int = 5,
+    exclude_names: Optional[set] = None,
+    randomize: bool = True,
 ) -> List[Dict]:
     """
-    البحث عن الموردين في قاعدة البيانات
+    البحث عن الموردين في قاعدة البيانات بذكاء:
+      • مطابقة دقيقة بالكلمات المفتاحية أولاً (مثلاً "بروست") ثم الفئة العامة.
+      • اختيار عشوائي من أفضل 10-15 مرشّح (بدل إعادة نفس المورد دائماً).
+      • استبعاد الأسماء المعروضة سابقاً للمستخدم (exclude_names).
+      • الشركاء (is_partner=True) يُرتّبون قبل غيرهم بتقييم أعلى.
     """
-    queryset = Supplier.objects.filter(is_active=True)
-    
+    import random
+
+    base = Supplier.objects.filter(is_active=True)
+    if is_partner is not None:
+        base = base.filter(is_partner=is_partner)
+
+    keywords = [k for k in (keywords or []) if k and len(k.strip()) >= 2]
+    exclude_lower = {n.strip().lower() for n in (exclude_names or set())}
+
+    # ─── طبقة 1: مطابقة دقيقة بالكلمات المفتاحية ───
+    primary_qs = base
+    if keywords:
+        kw_filter = Q()
+        for kw in keywords:
+            kw_filter |= (
+                Q(name_ar__icontains=kw) |
+                Q(name_en__icontains=kw) |
+                Q(description__icontains=kw) |
+                Q(services__icontains=kw) |
+                Q(subcategory__name_ar__icontains=kw)
+            )
+        primary_qs = primary_qs.filter(kw_filter)
+
     if category_name:
-        queryset = queryset.filter(
+        primary_qs = primary_qs.filter(
+            Q(category__name_ar__icontains=category_name) |
+            Q(category__name_en__icontains=category_name) |
+            Q(subcategory__name_ar__icontains=category_name) |
+            Q(services__icontains=category_name)
+        )
+
+    # جمع أفضل المرشحين (تجمع أوسع للعشوائية)
+    pool_size = max(limit * 3, 10)
+    candidates = list(primary_qs.order_by('-is_partner', '-rating', '-reviews_count')[:pool_size])
+
+    # ─── fallback: لو ما حصلنا شي وفيه keywords، نوسّع على الفئة فقط ───
+    if not candidates and keywords and category_name:
+        fallback_qs = base.filter(
             Q(category__name_ar__icontains=category_name) |
             Q(category__name_en__icontains=category_name) |
             Q(subcategory__name_ar__icontains=category_name)
         )
-    
-    if keywords:
-        keyword_filter = Q()
-        for keyword in keywords:
-            keyword_filter |= (
-                Q(name_ar__icontains=keyword) |
-                Q(name_en__icontains=keyword) |
-                Q(description__icontains=keyword) |
-                Q(services__icontains=keyword)
-            )
-        queryset = queryset.filter(keyword_filter)
-    
-    if is_partner is not None:
-        queryset = queryset.filter(is_partner=is_partner)
-    
-    queryset = queryset.order_by('-is_partner', '-rating')[:limit]
+        candidates = list(fallback_qs.order_by('-is_partner', '-rating')[:pool_size])
+
+    # استبعاد الأسماء المعروضة مسبقاً للمستخدم (لتنوّع البدائل)
+    if exclude_lower:
+        candidates = [s for s in candidates if (s.name_ar or '').strip().lower() not in exclude_lower]
+
+    if not candidates:
+        return []
+
+    # ─── ترتيب ذكي مع عشوائية:
+    # 1) الشركاء أولاً (بترتيبهم الأصلي بالتقييم) — يحافظ على أولوية الترويج
+    # 2) غير الشركاء يتم خلطهم عشوائياً من أفضل N لتنويع النتائج بين الطلبات
+    partners_pool = [s for s in candidates if s.is_partner]
+    others_pool = [s for s in candidates if not s.is_partner]
+    if randomize and len(others_pool) > 1:
+        # نحافظ على أعلى 3 بالتقييم، ونخلط الباقي ضمن "الدرجة الثانية"
+        top_tier = others_pool[:3]
+        rest_tier = others_pool[3:]
+        random.shuffle(top_tier)
+        random.shuffle(rest_tier)
+        others_pool = top_tier + rest_tier
+
+    final_list = (partners_pool + others_pool)[:limit]
+    queryset = final_list
     
     results = []
     for supplier in queryset:

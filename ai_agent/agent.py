@@ -184,16 +184,22 @@ class DhibanAgent:
             is_alt = sctx.is_alternatives_request(user_message)
             exclusions = sctx.get_exclusions(user_id) if is_alt else set()
 
-            def _finalize_with_partner(result_text: str, category_hint: str) -> str:
+            def _finalize_with_partner(
+                result_text: str,
+                category_hint: str,
+                specific_terms: Optional[List[str]] = None,
+            ) -> str:
                 """
                 يضيف:
                   1) شريكاً معتمداً رئيسياً في رأس النتائج (لو توفر للفئة)
+                     — مع مطابقة دقيقة على specific_terms (مثلاً "بروست") لتنويع ذكي.
                   2) شريكاً مرافقاً من فئة قريبة في ذيل الرد (cross-sell ذكي)
                 ثم يسجّل الأسماء المعروضة.
                 """
                 main_partner = sctx.find_best_partner(
                     category=category_hint,
                     user_phone=user_id,
+                    specific_terms=specific_terms,
                 )
                 main_partner_id = None
                 if main_partner and main_partner.get('name') and main_partner['name'] not in (result_text or ''):
@@ -240,55 +246,105 @@ class DhibanAgent:
                     sctx.record_search(user_id, category_hint, shown)
                 return result_text
 
+            # خريطة place_type إنجليزي → فئة عربية
+            category_map = {
+                'restaurant': 'مطعم', 'cafe': 'كافيه', 'pharmacy': 'صيدلية',
+                'bakery': 'مخبز', 'supermarket': 'سوبرماركت',
+                'gas_station': 'محطة وقود', 'atm': 'صراف آلي',
+                'hair_salon': 'حلاق', 'barber_shop': 'حلاق',
+                'beauty_salon': 'صالون تجميل', 'gym': 'صالة رياضية',
+                'park': 'حديقة', 'hospital': 'مستشفى',
+            }
+
             if tool_name == "search_suppliers":
+                category_hint = arguments.get("category_name") or ''
+                keywords = [k for k in (arguments.get("keywords") or []) if k]
+                specific_terms = [k for k in keywords if k != category_hint]
+
+                # البحث الشلالي: DB أولاً مع تنويع + استبعاد الأسماء المعروضة
                 results = search_suppliers(
-                    category_name=arguments.get("category_name"),
-                    keywords=arguments.get("keywords"),
-                    is_partner=arguments.get("is_partner")
+                    category_name=category_hint,
+                    keywords=keywords,
+                    is_partner=arguments.get("is_partner"),
+                    limit=5,
+                    exclude_names=exclusions if exclusions else None,
+                    randomize=True,
                 )
-                if exclusions and results:
-                    results = [r for r in results if r.get('name', '').strip() not in exclusions]
                 if results:
                     formatted = format_search_results(
                         {'database_results': results, 'google_results': [], 'total': len(results)}
                     )
-                    category = arguments.get("category_name") or (
-                        arguments.get("keywords", [''])[0] if arguments.get("keywords") else ''
-                    )
-                    return _finalize_with_partner(formatted, category)
-                return "لم أجد نتائج في قاعدة البيانات."
+                    # لو الـ category فارغة، استخدم أول keyword كتلميح
+                    eff_category = category_hint or (keywords[0] if keywords else '')
+                    return _finalize_with_partner(formatted, eff_category, specific_terms=specific_terms)
+
+                # DB فارغة → جرّب Google كـ fallback مع حقن شريك بنفس الفئة
+                q = category_hint or ' '.join(keywords)
+                logger.info(f"[AGENT] search_suppliers empty → falling back to Google: {q}")
+                google_results = search_google_places(
+                    query=q, limit=5,
+                    exclude_names=exclusions if exclusions else None,
+                )
+                if google_results:
+                    formatted = format_google_results(google_results, q)
+                    eff_category = category_hint or (keywords[0] if keywords else '')
+                    return _finalize_with_partner(formatted, eff_category, specific_terms=specific_terms)
+                return "لم أجد نتائج في قاعدة البيانات ولا في Google Maps."
 
             elif tool_name == "search_google_places":
                 query = arguments.get("query", "")
+                place_type = arguments.get("place_type", "")
+                # استخراج المصطلحات المحددة (نوع الأكل مثلاً) من الـ query
+                category = category_map.get(place_type, place_type or query)
+                specific_terms = []
+                if query:
+                    # كلمات ≥ 2 حروف داخل الـ query، مع تنظيف كلمات مثل "مطعم"
+                    raw_tokens = [t.strip() for t in query.split() if len(t.strip()) >= 2]
+                    generic = {'مطعم', 'مطاعم', 'كافيه', 'كوفي', 'محل', 'في', 'عنيزة'}
+                    specific_terms = [t for t in raw_tokens if t not in generic]
+
+                # جرّب موردي DB أولاً (شركاء + عاديين) مع الكلمات المحددة — أولوية أعلى من Google
+                if specific_terms or category:
+                    db_results = search_suppliers(
+                        category_name=category,
+                        keywords=specific_terms or None,
+                        limit=5,
+                        exclude_names=exclusions if exclusions else None,
+                        randomize=True,
+                    )
+                    if db_results:
+                        formatted = format_search_results(
+                            {'database_results': db_results, 'google_results': [], 'total': len(db_results)}
+                        )
+                        return _finalize_with_partner(formatted, category, specific_terms=specific_terms)
+
+                # DB ما فيها شي → Google
                 results = search_google_places(
                     query=query,
-                    place_type=arguments.get("place_type"),
+                    place_type=place_type or None,
                     limit=5,
                     exclude_names=exclusions if exclusions else None,
                 )
                 if results:
                     formatted = format_google_results(results, query)
-                    # استنتاج الفئة للشريك
-                    category = arguments.get("place_type") or query
-                    # تحويل place_type (إنجليزي) إلى عربي تقريبي
-                    category_map = {
-                        'restaurant': 'مطعم', 'cafe': 'كافيه', 'pharmacy': 'صيدلية',
-                        'bakery': 'مخبز', 'supermarket': 'سوبرماركت',
-                    }
-                    category = category_map.get(category, category)
-                    return _finalize_with_partner(formatted, category)
+                    return _finalize_with_partner(formatted, category, specific_terms=specific_terms)
                 if exclusions:
                     return f"ما لقيت خيارات جديدة غير اللي ذكرتها قبل لـ '{query}' 😕 تبي أوسّع البحث أو أغيّر الكلمات؟"
                 return f"لم أجد نتائج لـ '{query}' في Google Maps."
 
             elif tool_name == "combined_search":
                 query = arguments.get("query", "")
+                category = arguments.get("category") or ''
+                keywords = [k for k in (arguments.get("keywords") or []) if k]
+                specific_terms = [k for k in keywords if k != category] or (
+                    [query] if query and query != category else []
+                )
+
                 results = combined_search(
                     query=query,
-                    category=arguments.get("category"),
-                    keywords=arguments.get("keywords"),
+                    category=category or None,
+                    keywords=keywords or None,
                 )
-                # استبعاد من نتائج DB + Google عند طلب البدائل
                 if exclusions:
                     results['database_results'] = [
                         r for r in results.get('database_results', [])
@@ -299,8 +355,8 @@ class DhibanAgent:
                         if r.get('name', '').strip() not in exclusions
                     ]
                 formatted = format_search_results(results, query)
-                category = arguments.get("category") or query
-                return _finalize_with_partner(formatted, category)
+                eff_category = category or query
+                return _finalize_with_partner(formatted, eff_category, specific_terms=specific_terms)
 
             elif tool_name == "get_categories":
                 categories = get_categories()
@@ -408,14 +464,6 @@ class DhibanAgent:
                 logger.info(f"[AGENT] Tool call: {tool_name} | args: {arguments}")
                 result = self._execute_tool(tool_name, arguments, user_id=user_id, user_message=user_message)
                 logger.info(f"[AGENT] Tool result length: {len(result)} | preview: {repr(result[:200])}")
-                
-                # إذا لم نجد في الموردين ابحث في Google تلقائياً
-                if tool_name == "search_suppliers" and "لم أجد" in result:
-                    q = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
-                    logger.info(f"[AGENT] No DB results, falling back to Google: {q}")
-                    google_result = search_google_places(query=q, limit=3)
-                    if google_result:
-                        result = format_google_results(google_result, q)
                 
                 # إعادة إرسال نتيجة الأداة لـ OpenAI ليصيغها بأسلوبه الودي
                 messages.append({
@@ -531,13 +579,6 @@ class DhibanAgent:
                 logger.info(f"[AGENT-WA] Tool call: {tool_name} | args: {arguments}")
                 result = self._execute_tool(tool_name, arguments, user_id=user_id, user_message=user_message)
                 logger.info(f"[AGENT-WA] Tool result length: {len(result)} | preview: {repr(result[:200])}")
-                
-                if tool_name == "search_suppliers" and "لم أجد" in result:
-                    q = arguments.get("category_name") or " ".join(arguments.get("keywords", []))
-                    logger.info(f"[AGENT-WA] No DB results, falling back to Google: {q}")
-                    google_result = search_google_places(query=q, limit=3)
-                    if google_result:
-                        result = format_google_results(google_result, q)
                 
                 # إعادة إرسال نتيجة الأداة لـ OpenAI ليصيغها بأسلوبه الودي
                 messages.append({
