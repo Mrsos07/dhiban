@@ -162,6 +162,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # WhiteNoise for static files in production
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+WHITENOISE_KEEP_ONLY_HASHED_FILES = False
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
