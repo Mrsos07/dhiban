@@ -4,10 +4,10 @@ from .models import WhatsAppUser
 
 @admin.register(WhatsAppUser)
 class WhatsAppUserAdmin(admin.ModelAdmin):
-    list_display = ('phone_number', 'name', 'customer_category', 'is_active', 'registration_date', 'last_interaction')
-    list_filter = ('is_active', 'customer_category', 'registration_date')
+    list_display = ('phone_number', 'name', 'customer_category', 'terms_accepted', 'is_active', 'registration_date', 'last_interaction')
+    list_filter = ('is_active', 'terms_accepted', 'customer_category', 'registration_date')
     search_fields = ('phone_number', 'name', 'whatsapp_id')
-    readonly_fields = ('id', 'registration_date', 'last_interaction')
+    readonly_fields = ('id', 'registration_date', 'last_interaction', 'terms_accepted_at')
     ordering = ('-registration_date',)
     
     fieldsets = (
@@ -15,5 +15,6 @@ class WhatsAppUserAdmin(admin.ModelAdmin):
         ('التصنيف', {'fields': ('customer_category', 'tags')}),
         ('الموقع', {'fields': ('location',)}),
         ('الحالة', {'fields': ('is_active', 'preferences')}),
+        ('الشروط والأحكام', {'fields': ('terms_accepted', 'terms_accepted_at')}),
         ('التواريخ', {'fields': ('registration_date', 'last_interaction')}),
     )

@@ -96,7 +96,20 @@ class WhatsAppUser(models.Model):
         blank=True,
         help_text=_('تفضيلات المستخدم مثل اللغة والإشعارات')
     )
-    
+
+    terms_accepted = models.BooleanField(
+        _('وافق على الشروط'),
+        default=False,
+        db_index=True,
+        help_text=_('هل ضغط المستخدم على زر الموافقة على الشروط والأحكام'),
+    )
+
+    terms_accepted_at = models.DateTimeField(
+        _('تاريخ الموافقة على الشروط'),
+        null=True,
+        blank=True,
+    )
+
     class Meta:
         verbose_name = _('مستخدم واتساب')
         verbose_name_plural = _('مستخدمو واتساب')

@@ -9,12 +9,79 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
+from django.conf import settings
 
 from users.models import WhatsAppUser
 from conversations.models import Conversation
 from .evolution_api import evolution_api
 
 logger = logging.getLogger(__name__)
+
+# كلمات تُعتبر موافقةً صريحة على الشروط (في حال ضغط المستخدم الزر أو كتب يدوياً)
+CONSENT_WORDS = {
+    'موافق', 'موافقة', 'اوافق', 'أوافق', 'موافقه',
+    'نعم', 'أكيد', 'اكيد', 'ok', 'okay', 'yes', 'y',
+    'قبول', 'أقبل', 'اقبل', 'ابدا', 'ابدأ', 'تمام',
+}
+
+
+def _is_consent_text(text: str) -> bool:
+    """يكشف إن كان نص الرسالة يعبّر عن الموافقة على الشروط."""
+    if not text:
+        return False
+    import re as _re
+    # تطبيع: إزالة التشكيل والمسافات الزائدة والأحرف غير الحرفية حول الكلمة
+    norm = _re.sub(r'[\u064B-\u0652]', '', text).strip().lower()
+    norm = _re.sub(r'[^\w\u0600-\u06FF\s]', '', norm).strip()
+    return norm in CONSENT_WORDS
+
+
+def _send_welcome_with_consent(phone_number: str, contact_name: str = ''):
+    """
+    يرسل رسالة ترحيب مع:
+      • زر يفتح صفحة الشروط والأحكام
+      • زر "موافق" يسمح بمتابعة المحادثة
+    Fallback: لو الخادم ما يدعم الأزرار → يرسل نصاً مع الرابط.
+    """
+    terms_url = getattr(settings, 'TERMS_URL', 'https://dhiban.com/#terms')
+    greet_name = (contact_name or '').strip().split()[0] if contact_name else ''
+    greeting = f"هلا والله{' يا ' + greet_name if greet_name else ''} 🐺"
+    body = (
+        f"{greeting}\n\n"
+        "أنا *ذيبان* — دليلك الذكي في عنيزة. أقدر أساعدك تلقى أي مطعم، كافيه، "
+        "صيدلية، ورشة، خدمة منزلية... كل اللي تبي 👌\n\n"
+        "قبل ما نبدأ، الرجاء الاطلاع على *الشروط والأحكام* والموافقة عليها "
+        "لتفعيل الخدمة. بالضغط على زر \"موافق\" فإنك تؤكّد أنك قرأت الشروط "
+        "وتوافق عليها."
+    )
+    footer = "ذيبان · دليلك الذكي في عنيزة"
+    buttons = [
+        {'type': 'url', 'displayText': '📄 اقرأ الشروط', 'url': terms_url},
+        {'type': 'reply', 'displayText': '✅ موافق', 'id': 'terms_accept'},
+    ]
+    try:
+        result = evolution_api.send_buttons(
+            phone=phone_number,
+            body=body,
+            buttons=buttons,
+            footer=footer,
+        )
+        if result.get('success'):
+            logger.info(f"[CONSENT] Welcome+consent sent to {phone_number}")
+        else:
+            logger.error(f"[CONSENT] Welcome send failed: {result.get('error')}")
+    except Exception as e:
+        logger.error(f"[CONSENT] Welcome send exception: {e}", exc_info=True)
+
+
+def _mark_user_accepted_terms(user: WhatsAppUser):
+    """يسجّل موافقة المستخدم على الشروط مع الطابع الزمني."""
+    if user.terms_accepted:
+        return
+    user.terms_accepted = True
+    user.terms_accepted_at = timezone.now()
+    user.save(update_fields=['terms_accepted', 'terms_accepted_at'])
+    logger.info(f"[CONSENT] User {user.phone_number} accepted terms at {user.terms_accepted_at}")
 
 
 def _extract_text_from_message(message: dict) -> str:
@@ -268,7 +335,34 @@ def process_evolution_message(msg: dict):
     user = get_or_create_user(phone_number, contact_name)
     conversation = get_or_create_conversation(user)
 
-    # بناء تاريخ المحادثة للذاكرة
+    # ═══ بوابة الموافقة على الشروط ═══
+    # إذا لم يوافق المستخدم بعد، نحصر التفاعل في: عرض الترحيب+الشروط، وقبول الموافقة.
+    # أي رسالة أخرى تُقابَل بإعادة إرسال رسالة الترحيب.
+    if not user.terms_accepted:
+        # هل هذه الرسالة تعبّر عن الموافقة؟ (ضغطة زر "موافق" ترد نصاً، أو كتابة يدوية)
+        if text and _is_consent_text(text):
+            _mark_user_accepted_terms(user)
+            conversation.add_message('user', text)
+            try:
+                evolution_api.send_text(
+                    phone_number,
+                    "تمام يا الغالي، تم تفعيل الخدمة ✅\n"
+                    "الحين قل لي وش تبي: مطعم، كافيه، صيدلية، ورشة... أو أي شي في عنيزة 🐺",
+                )
+            except Exception as e:
+                logger.error(f"[CONSENT] Post-accept welcome failed: {e}")
+            conversation.add_message('bot', 'تم تفعيل الخدمة بعد الموافقة على الشروط')
+            return
+
+        # أي رسالة قبل الموافقة → إرسال رسالة الترحيب+الشروط
+        logger.info(f"[CONSENT] Blocking message from {phone_number} (terms not accepted yet)")
+        if text:
+            conversation.add_message('user', text)
+        _send_welcome_with_consent(phone_number, contact_name)
+        conversation.add_message('bot', '[CONSENT_PROMPT] رسالة ترحيب + طلب الموافقة على الشروط')
+        return
+
+    # بناء تاريخ المحادثة للذاكرة (فقط للمستخدمين الموافقين)
     history = build_chat_history(conversation)
 
     try:

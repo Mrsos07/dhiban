@@ -18,6 +18,10 @@ DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
+# URL عام للموقع (يُستخدم في روابط واتساب مثل صفحة الشروط)
+SITE_URL = os.environ.get('SITE_URL', 'https://dhiban.com').rstrip('/')
+TERMS_URL = os.environ.get('TERMS_URL', f'{SITE_URL}/#terms')
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

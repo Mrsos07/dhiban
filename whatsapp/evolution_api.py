@@ -304,6 +304,42 @@ class EvolutionAPI:
             return self.send_text(phone, fallback, link_preview=True)
         return result
 
+    def send_buttons(self, phone: str, body: str, buttons: List[Dict], title: str = '', footer: str = '') -> Dict:
+        """
+        إرسال رسالة فيها مزيج من الأزرار (URL + Reply).
+        كل زر dict يحتوي على:
+          - 'type': 'url' | 'reply'
+          - 'displayText': نص الزر
+          - 'url' (لـ url فقط) أو 'id' (لـ reply فقط)
+        مثال: [
+          {'type':'url','displayText':'اقرأ الشروط','url':'https://...'},
+          {'type':'reply','displayText':'موافق','id':'terms_accept'},
+        ]
+        Fallback إلى نص عادي لو فشل.
+        """
+        phone = self._normalize_phone(phone)
+        payload = {
+            'number': phone,
+            'title': title or '',
+            'description': body,
+            'footer': footer or '',
+            'buttons': buttons,
+        }
+        result = self._post(f'/message/sendButtons/{self.instance_name}', payload)
+        if not result.get('success'):
+            logger.warning(f"send_buttons failed ({result.get('error')}), falling back to text")
+            # fallback نصي يجمع الروابط والخيارات
+            lines = [body]
+            for b in buttons:
+                if b.get('type') == 'url' and b.get('url'):
+                    lines.append(f"\n🔗 {b.get('displayText', 'اضغط هنا')}: {b['url']}")
+                elif b.get('type') == 'reply':
+                    lines.append(f"\n↩️ رد بكلمة: *{b.get('displayText', '')}*")
+            if footer:
+                lines.append(f"\n_{footer}_")
+            return self.send_text(phone, "\n".join(lines), link_preview=True)
+        return result
+
     def send_image(self, phone: str, image_url: str, caption: str = '') -> Dict:
         """إرسال صورة"""
         phone = self._normalize_phone(phone)
