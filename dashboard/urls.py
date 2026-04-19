@@ -32,6 +32,13 @@ urlpatterns = [
     # Categories
     path('categories/', views.categories_list, name='categories_list'),
     path('categories/add/', views.category_add, name='category_add'),
+    path('categories/<uuid:pk>/edit/', views.category_edit, name='category_edit'),
+    path('categories/<uuid:pk>/delete/', views.category_delete, name='category_delete'),
+
+    # Subcategories
+    path('subcategories/add/', views.subcategory_add, name='subcategory_add'),
+    path('subcategories/<uuid:pk>/edit/', views.subcategory_edit, name='subcategory_edit'),
+    path('subcategories/<uuid:pk>/delete/', views.subcategory_delete, name='subcategory_delete'),
     
     # Export
     path('export/', views.export_data, name='export_data'),

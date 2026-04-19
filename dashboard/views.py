@@ -407,21 +407,128 @@ def conversation_detail(request, pk):
 
 @staff_member_required
 def categories_list(request):
-    """قائمة التصنيفات"""
-    categories = Category.objects.annotate(suppliers_count=Count('suppliers'))
+    """قائمة التصنيفات مع التصنيفات الفرعية المنضوية تحتها"""
+    categories = (
+        Category.objects
+        .annotate(suppliers_count=Count('suppliers'))
+        .prefetch_related('subcategories')
+        .order_by('order', 'name_ar')
+    )
     return render(request, 'dashboard/categories_list.html', {'categories': categories})
 
 
 @staff_member_required
 def category_add(request):
-    """إضافة تصنيف"""
+    """إضافة تصنيف رئيسي"""
     if request.method == 'POST':
+        name_ar = (request.POST.get('name_ar') or '').strip()
+        if not name_ar:
+            messages.error(request, 'الاسم بالعربية مطلوب.')
+            return redirect('dashboard:categories_list')
         Category.objects.create(
-            name_ar=request.POST.get('name_ar'),
-            name_en=request.POST.get('name_en', ''),
-            icon=request.POST.get('icon', 'folder'),
+            name_ar=name_ar,
+            name_en=(request.POST.get('name_en') or '').strip(),
+            icon=(request.POST.get('icon') or 'folder').strip(),
         )
-        messages.success(request, 'تم إضافة التصنيف بنجاح.')
+        messages.success(request, f'تم إضافة التصنيف "{name_ar}" بنجاح.')
+    return redirect('dashboard:categories_list')
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def category_edit(request, pk):
+    """تعديل تصنيف رئيسي"""
+    cat = get_object_or_404(Category, pk=pk)
+    cat.name_ar = (request.POST.get('name_ar') or cat.name_ar).strip()
+    cat.name_en = (request.POST.get('name_en') or '').strip()
+    cat.icon = (request.POST.get('icon') or cat.icon or 'folder').strip()
+    cat.is_active = request.POST.get('is_active') == 'on'
+    cat.save()
+    messages.success(request, f'تم تحديث التصنيف "{cat.name_ar}".')
+    return redirect('dashboard:categories_list')
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def category_delete(request, pk):
+    """حذف تصنيف رئيسي (يحذف التصنيفات الفرعية تلقائياً)"""
+    cat = get_object_or_404(Category, pk=pk)
+    if cat.suppliers.exists():
+        messages.error(
+            request,
+            f'لا يمكن حذف "{cat.name_ar}" لأنه مرتبط بـ {cat.suppliers.count()} مورد. '
+            'انقل الموردين لتصنيف آخر أولاً أو أوقف التصنيف بدلاً من حذفه.',
+        )
+        return redirect('dashboard:categories_list')
+    name = cat.name_ar
+    cat.delete()
+    messages.success(request, f'تم حذف التصنيف "{name}".')
+    return redirect('dashboard:categories_list')
+
+
+# ─── التصنيفات الفرعية ────────────────────────────────────────────────
+
+@staff_member_required
+@require_http_methods(["POST"])
+def subcategory_add(request):
+    """إضافة تصنيف فرعي داخل تصنيف رئيسي"""
+    category_id = request.POST.get('category_id')
+    name_ar = (request.POST.get('name_ar') or '').strip()
+    if not (category_id and name_ar):
+        messages.error(request, 'التصنيف الرئيسي والاسم بالعربية مطلوبان.')
+        return redirect('dashboard:categories_list')
+    parent = get_object_or_404(Category, pk=category_id)
+    # تجنّب التكرار (unique_together في النموذج)
+    if SubCategory.objects.filter(category=parent, name_ar=name_ar).exists():
+        messages.warning(request, f'"{name_ar}" موجود مسبقاً تحت "{parent.name_ar}".')
+        return redirect('dashboard:categories_list')
+    SubCategory.objects.create(
+        category=parent,
+        name_ar=name_ar,
+        name_en=(request.POST.get('name_en') or '').strip(),
+        is_active=True,
+    )
+    messages.success(request, f'تم إضافة "{name_ar}" تحت "{parent.name_ar}".')
+    return redirect('dashboard:categories_list')
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def subcategory_edit(request, pk):
+    """تعديل تصنيف فرعي"""
+    sub = get_object_or_404(SubCategory, pk=pk)
+    new_name = (request.POST.get('name_ar') or sub.name_ar).strip()
+    # فحص التكرار قبل التحديث
+    if new_name != sub.name_ar and SubCategory.objects.filter(
+        category=sub.category, name_ar=new_name
+    ).exclude(pk=sub.pk).exists():
+        messages.warning(request, f'"{new_name}" موجود مسبقاً تحت "{sub.category.name_ar}".')
+        return redirect('dashboard:categories_list')
+    sub.name_ar = new_name
+    sub.name_en = (request.POST.get('name_en') or '').strip()
+    sub.is_active = request.POST.get('is_active') == 'on'
+    sub.save()
+    messages.success(request, f'تم تحديث التصنيف الفرعي "{sub.name_ar}".')
+    return redirect('dashboard:categories_list')
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def subcategory_delete(request, pk):
+    """حذف تصنيف فرعي"""
+    sub = get_object_or_404(SubCategory, pk=pk)
+    linked = Supplier.objects.filter(subcategory=sub).count()
+    if linked:
+        messages.error(
+            request,
+            f'لا يمكن حذف "{sub.name_ar}" لأنه مرتبط بـ {linked} مورد. '
+            'غيّر تصنيف الموردين أولاً.',
+        )
+        return redirect('dashboard:categories_list')
+    name = sub.name_ar
+    parent_name = sub.category.name_ar
+    sub.delete()
+    messages.success(request, f'تم حذف "{name}" من تحت "{parent_name}".')
     return redirect('dashboard:categories_list')
 
 
