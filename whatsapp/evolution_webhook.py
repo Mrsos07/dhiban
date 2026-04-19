@@ -386,12 +386,21 @@ def process_evolution_message(msg: dict):
         response = "عذراً حدث خطأ. جرب مرة ثانية 🐺"
 
     if response:
-        result = evolution_api.send_text(phone_number, response)
-        if result.get('success'):
-            logger.info(f"Reply sent to {phone_number}")
-        else:
-            logger.error(f"Failed to send reply to {phone_number}: {result.get('error')}")
-        conversation.add_message('bot', response)
+        # دعم تعدد الرسائل: الوكيل قد يرجع list عند فصل "الشريك المميز"
+        # في رسالة مستقلة بعد الرد الأساسي. نرسلها بفاصل صغير للقراءة الطبيعية.
+        import time as _t
+        messages_to_send = response if isinstance(response, list) else [response]
+        for idx, msg in enumerate(messages_to_send):
+            if not msg:
+                continue
+            if idx > 0:
+                _t.sleep(0.8)  # فاصل صغير لتبدو الرسائل متتابعة طبيعياً
+            result = evolution_api.send_text(phone_number, msg)
+            if result.get('success'):
+                logger.info(f"Reply part {idx+1}/{len(messages_to_send)} sent to {phone_number}")
+            else:
+                logger.error(f"Failed to send reply part to {phone_number}: {result.get('error')}")
+            conversation.add_message('bot', msg)
 
 
 @csrf_exempt

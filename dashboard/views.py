@@ -542,7 +542,14 @@ def agent_chat(request):
         # معالجة الرسالة مع التاريخ
         response = dhiban_agent.process_message_with_history(message, chat_history, user_id=data.get('user_id'))
         
-        return JsonResponse({'response': response})
+        # دعم تعدد الرسائل: الوكيل قد يرجع list (رسالة رئيسية + رسالة شريك مستقلة)
+        if isinstance(response, list):
+            # للواجهة: نرجع كلا الرسالتين حتى تعرضهما بشكل منفصل
+            return JsonResponse({
+                'response': response[0] if response else '',
+                'messages': response,  # الواجهة الجديدة تقرأ هذا
+            })
+        return JsonResponse({'response': response, 'messages': [response]})
     
     except Exception as e:
         return JsonResponse({'error': str(e), 'response': 'حدث خطأ في معالجة الرسالة.'}, status=500)

@@ -40,6 +40,9 @@ class DhibanAgent:
         # تحميل الإعدادات من قاعدة البيانات
         self._settings_cache = None
         self._settings_cache_time = None
+        # شريك معلّق ليُرسل كرسالة ثانية مستقلة بعد الرد الرئيسي
+        # (ينضبط داخل _execute_tool ويُستهلك في process_message_with_history)
+        self._pending_partner_followup: Optional[str] = None
     
     def _get_settings(self):
         """جلب إعدادات الوكيل من قاعدة البيانات مع كاش لمدة 60 ثانية"""
@@ -137,21 +140,28 @@ class DhibanAgent:
     
     def _format_partner_block(self, partner: Dict) -> str:
         """
-        تنسيق الشريك كـ "ترشيحنا المميز" يوضع كبند أول في نتائج البحث.
+        تنسيق الشريك كـ "ترشيحنا المميز" — **رسالة مستقلة** تُرسل بعد الرد الرئيسي.
         يتضمن badge واضح ليعرف المستخدم أنه شريك معتمد.
         """
-        lines = [f"⭐ *ترشيحنا المميز — شريك معتمد*"]
-        lines.append(f"*{partner.get('name', '')}*")
+        lines = [
+            "⭐ *ترشيحنا المميز — شريك معتمد*",
+            "",
+            f"*{partner.get('name', '')}*",
+        ]
         if partner.get('rating'):
-            lines.append(f"   ⭐ {partner['rating']}/5" + (f" ({partner.get('total_ratings', 0)} تقييم)" if partner.get('total_ratings') else ''))
+            rating_line = f"⭐ {partner['rating']}/5"
+            if partner.get('total_ratings'):
+                rating_line += f" ({partner['total_ratings']} تقييم)"
+            lines.append(rating_line)
         if partner.get('agent_notes'):
-            lines.append(f"   📝 {partner['agent_notes']}")
+            lines.append(f"📝 {partner['agent_notes']}")
         if partner.get('address'):
-            lines.append(f"   📍 {partner['address']}")
+            lines.append(f"📍 {partner['address']}")
         if partner.get('phone'):
-            lines.append(f"   📞 {partner['phone']}")
+            lines.append(f"📞 {partner['phone']}")
         if partner.get('maps_url'):
-            lines.append(f"   🗺️ الموقع:\n{partner['maps_url']}")
+            lines.append("🗺️ الموقع:")
+            lines.append(partner['maps_url'])
         return "\n".join(lines)
 
     def _extract_names_from_result(self, result_text: str) -> List[str]:
@@ -190,21 +200,28 @@ class DhibanAgent:
                 specific_terms: Optional[List[str]] = None,
             ) -> str:
                 """
-                يضيف:
-                  1) شريكاً معتمداً رئيسياً في رأس النتائج (لو توفر للفئة)
-                     — مع مطابقة دقيقة على specific_terms (مثلاً "بروست") لتنويع ذكي.
-                  2) شريكاً مرافقاً من فئة قريبة في ذيل الرد (cross-sell ذكي)
-                ثم يسجّل الأسماء المعروضة.
+                سياسة جديدة للترشيح:
+                  1) الشريك الرئيسي (الأفضل مطابقةً لطلب المستخدم) — **لا يُدرج** داخل
+                     نص النتائج، بل يُحفظ في self._pending_partner_followup ليُرسل
+                     **كرسالة ثانية مستقلة** بعد الرد الأساسي (وضوح أعلى، بدون
+                     إرباك اللغة الموحّدة للرد).
+                  2) الشريك المرافق (cross-sell) — يبقى داخل الرد الأساسي كما هو
+                     (جزء طبيعي من سياق الخدمة، مثلاً: "بعد العشاء عندك *X* للقهوة").
                 """
+                shown_so_far = set(self._extract_names_from_result(result_text))
+
+                # 1) الشريك الرئيسي: **دائماً** كرسالة مستقلة بعد الرد الأساسي.
+                # حتى لو كان الشريك ضمن نتائج البحث، نضيف له رسالة مميزة بشارة
+                # "⭐ ترشيحنا المميز" ليبرز في واجهة المستخدم.
+                # ونُلمح للنموذج عبر الـ guard ألا يبرز أي مكان بنفسه كـ "ترشيحنا المميز".
                 main_partner = sctx.find_best_partner(
                     category=category_hint,
                     user_phone=user_id,
                     specific_terms=specific_terms,
                 )
                 main_partner_id = None
-                if main_partner and main_partner.get('name') and main_partner['name'] not in (result_text or ''):
-                    block = self._format_partner_block(main_partner)
-                    result_text = f"{block}\n\n{result_text}"
+                if main_partner and main_partner.get('name'):
+                    self._pending_partner_followup = self._format_partner_block(main_partner)
                     main_partner_id = main_partner.get('_partner_id', '')
                     sctx.record_partner_promotion(
                         user_phone=user_id,
@@ -212,10 +229,13 @@ class DhibanAgent:
                         category=category_hint,
                         user_message=user_message,
                     )
-                    logger.info(f"[AGENT] Injected main partner '{main_partner['name']}' for '{category_hint}'")
+                    already_in_results = main_partner['name'] in (result_text or '')
+                    logger.info(f"[AGENT] Queued main partner followup '{main_partner['name']}' "
+                                f"for '{category_hint}' (specific={specific_terms}, "
+                                f"in_results={already_in_results})")
+                    shown_so_far.add(main_partner['name'])
 
-                # 2) اقتراح شريك مرافق من فئة مكمّلة (cross-sell)
-                # مثال: المستخدم طلب مطعم → نقترح سوبرماركت/كافيه شريك
+                # 2) الشريك المرافق (cross-sell) — يبقى داخل الرد الأساسي
                 try:
                     companion = sctx.find_companion_partner(
                         current_category=category_hint,
@@ -234,14 +254,15 @@ class DhibanAgent:
                                 user_message=f"[companion:{category_hint}] {user_message}",
                             )
                             logger.info(
-                                f"[AGENT] Injected companion partner '{comp_partner['name']}' "
+                                f"[AGENT] Injected companion '{comp_partner['name']}' "
                                 f"({companion.get('companion_category')}) after {category_hint}"
                             )
+                            shown_so_far.add(comp_partner['name'])
                 except Exception as e:
                     logger.error(f"[AGENT] companion injection failed (non-fatal): {e}")
 
                 # تسجيل كل الأسماء المعروضة (للاستبعاد في الطلب القادم)
-                shown = self._extract_names_from_result(result_text)
+                shown = list(shown_so_far | set(self._extract_names_from_result(result_text)))
                 if shown:
                     sctx.record_search(user_id, category_hint, shown)
                 return result_text
@@ -420,11 +441,25 @@ class DhibanAgent:
             # لو الرد أصلاً يحتوي شريكاً معتمداً (من نتائج الأداة)، لا نضيف ترويجاً ثانياً
             if 'ترشيحنا المميز' in bot_response or 'شريك معتمد' in bot_response:
                 return bot_response
+            # لو فيه شريك معلّق كرسالة ثانية، لا نكرر عبر maybe_promote
+            if self._pending_partner_followup:
+                return bot_response
             promo = maybe_promote(user_id, user_message or '', bot_response)
             if promo:
                 return f"{bot_response}\n\n{promo}"
         except Exception as e:
             logger.error(f"[AGENT] Promotion injection failed (non-fatal): {e}")
+        return bot_response
+
+    def _finalize_response(self, bot_response: str):
+        """
+        يغلّف الرد النهائي: إذا يوجد شريك معلّق → يرجع قائمة [main, partner_msg]
+        ليرسلها المتلقّي كرسالتين منفصلتين. وإلا يرجع النص كما هو.
+        """
+        followup = self._pending_partner_followup
+        self._pending_partner_followup = None  # استهلاك
+        if followup:
+            return [bot_response, followup]
         return bot_response
 
     def process_message(self, user_message: str, user_id: str = None) -> str:
@@ -510,15 +545,19 @@ class DhibanAgent:
                 
                 # طلب من OpenAI يصيغ النتائج بأسلوبه المحادثاتي
                 # نضيف تعليمة صارمة: قدّم النتائج كما هي فقط ولا تخترع أي اسم مكان إضافي
-                messages_with_guard = messages + [{
-                    "role": "system",
-                    "content": (
-                        "قدّم فقط الأماكن/الأسماء التي وردت حرفياً في نتيجة الأداة أعلاه. "
-                        "ممنوع منعاً باتاً إضافة أي اسم مطعم/محل/كافيه/مكان غير موجود في النتيجة. "
-                        "ممنوع تخمين أرقام هواتف أو عناوين أو تقييمات. "
-                        "إذا النتيجة فارغة قل بصراحة إنك ما لقيت واسأل المستخدم إذا يبي تجرب بحث ثاني."
+                guard_text = (
+                    "قدّم فقط الأماكن/الأسماء التي وردت حرفياً في نتيجة الأداة أعلاه. "
+                    "ممنوع منعاً باتاً إضافة أي اسم مطعم/محل/كافيه/مكان غير موجود في النتيجة. "
+                    "ممنوع تخمين أرقام هواتف أو عناوين أو تقييمات. "
+                    "إذا النتيجة فارغة قل بصراحة إنك ما لقيت واسأل المستخدم إذا يبي تجرب بحث ثاني."
+                )
+                if self._pending_partner_followup:
+                    guard_text += (
+                        " مهم: لا تكتب في ردك أي صيغة مثل 'ترشيحنا المميز' أو 'شريك معتمد' — "
+                        "سيصل للمستخدم ترشيح مميّز كرسالة ثانية مستقلة بعد ردك. "
+                        "قدّم الخيارات بشكل عادي ومتكافئ بدون تمييز خاص لأي منها."
                     )
-                }]
+                messages_with_guard = messages + [{"role": "system", "content": guard_text}]
                 # temperature منخفضة في مرحلة التنسيق لتقليل الاختراع
                 format_temp = min(float(temperature), 0.3)
                 final_response = self.client.chat.completions.create(
@@ -535,7 +574,7 @@ class DhibanAgent:
                 
                 bot_response = self._inject_promotion(bot_response, user_message, user_id)
                 self._save_message(user_id, 'bot', bot_response)
-                return bot_response
+                return self._finalize_response(bot_response)
             
             # رد مباشر من OpenAI بدون أدوات (محادثة/أسئلة توضيحية)
             bot_response = assistant_message.content
@@ -545,7 +584,7 @@ class DhibanAgent:
             
             bot_response = self._inject_promotion(bot_response, user_message, user_id)
             self._save_message(user_id, 'bot', bot_response)
-            return bot_response
+            return self._finalize_response(bot_response)
         
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)
@@ -623,15 +662,19 @@ class DhibanAgent:
                     "content": result
                 })
                 
-                messages_with_guard = messages + [{
-                    "role": "system",
-                    "content": (
-                        "قدّم فقط الأماكن/الأسماء التي وردت حرفياً في نتيجة الأداة أعلاه. "
-                        "ممنوع منعاً باتاً إضافة أي اسم مطعم/محل/كافيه/مكان غير موجود في النتيجة. "
-                        "ممنوع تخمين أرقام هواتف أو عناوين أو تقييمات. "
-                        "إذا النتيجة فارغة قل بصراحة إنك ما لقيت واسأل المستخدم إذا يبي تجرب بحث ثاني."
+                guard_text = (
+                    "قدّم فقط الأماكن/الأسماء التي وردت حرفياً في نتيجة الأداة أعلاه. "
+                    "ممنوع منعاً باتاً إضافة أي اسم مطعم/محل/كافيه/مكان غير موجود في النتيجة. "
+                    "ممنوع تخمين أرقام هواتف أو عناوين أو تقييمات. "
+                    "إذا النتيجة فارغة قل بصراحة إنك ما لقيت واسأل المستخدم إذا يبي تجرب بحث ثاني."
+                )
+                if self._pending_partner_followup:
+                    guard_text += (
+                        " مهم: لا تكتب في ردك أي صيغة مثل 'ترشيحنا المميز' أو 'شريك معتمد' — "
+                        "سيصل للمستخدم ترشيح مميّز كرسالة ثانية مستقلة بعد ردك. "
+                        "قدّم الخيارات بشكل عادي ومتكافئ بدون تمييز خاص لأي منها."
                     )
-                }]
+                messages_with_guard = messages + [{"role": "system", "content": guard_text}]
                 format_temp = min(float(temperature), 0.3)
                 final_response = self.client.chat.completions.create(
                     model=model,
@@ -644,13 +687,15 @@ class DhibanAgent:
                 
                 if not bot_response:
                     bot_response = result
-                return self._inject_promotion(bot_response, user_message, user_id)
+                bot_response = self._inject_promotion(bot_response, user_message, user_id)
+                return self._finalize_response(bot_response)
             
             bot_response = assistant_message.content
             logger.info(f"[AGENT-WA] Direct OpenAI (no tool): {repr(str(bot_response)[:200])}")
             if not bot_response:
                 bot_response = "ها يالغالي؟ خبرني وش تبي بالضبط"
-            return self._inject_promotion(bot_response, user_message, user_id)
+            bot_response = self._inject_promotion(bot_response, user_message, user_id)
+            return self._finalize_response(bot_response)
         
         except Exception as e:
             logger.error(f"Agent error: {e}", exc_info=True)

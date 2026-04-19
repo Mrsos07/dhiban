@@ -121,6 +121,95 @@ def _supplier_to_result_dict(partner, fallback_category: str = '') -> Dict:
     }
 
 
+def _score_partner(supplier, specific_terms: List[str], cat_tokens: List[str],
+                   recent_promo_ids: Set[str]) -> Tuple[float, Dict]:
+    """
+    يحسب درجة ملاءمة الشريك للطلب. كل معيار يضيف نقاطاً موثّقة:
+      • مطابقة specific_terms في الاسم = +100 (أقوى إشارة)
+      • في الـ subcategory = +60
+      • في agent_notes = +50 (ملاحظات يكتبها المدير لتوجيه الوكيل)
+      • في services = +40
+      • في description = +25
+      • كل term إضافي مطابق يضاعف النقاط (جمع كلمات "مندي عوائل")
+      • التقييم × 12 (0 → 60 نقطة لتقييم 5.0)
+      • عدد المراجعات (مقيد): min(reviews, 300)/10 → 0-30 نقطة
+      • رُشّح مؤخراً لنفس المستخدم (7 أيام): -1000 (تنويع قوي)
+      • jitter عشوائي صغير ±3 لكسر التعادل الكامل
+    """
+    import random
+    score = 0.0
+    breakdown = {}
+
+    name = (supplier.name_ar or '').lower()
+    name_en = (supplier.name_en or '').lower()
+    subcat = (supplier.subcategory.name_ar if getattr(supplier, 'subcategory_id', None) else '') or ''
+    subcat_lower = subcat.lower()
+    notes = (supplier.agent_notes or '').lower()
+    services = (supplier.services or '').lower() if hasattr(supplier, 'services') else ''
+    desc = (supplier.description or '').lower()
+
+    # مطابقة المصطلحات المحددة
+    term_hits = 0
+    for term in specific_terms:
+        t = term.lower().strip()
+        if not t:
+            continue
+        matched_here = False
+        if t in name or t in name_en:
+            score += 100; matched_here = True
+        if t in subcat_lower:
+            score += 60; matched_here = True
+        if t in notes:
+            score += 50; matched_here = True
+        if t in services:
+            score += 40; matched_here = True
+        if t in desc:
+            score += 25; matched_here = True
+        if matched_here:
+            term_hits += 1
+    breakdown['specific_match_pts'] = score
+    breakdown['term_hits'] = term_hits
+
+    # مكافأة مجاميع المصطلحات (لو أكثر من كلمة تطابق → "مندي عوائل" = إشارة قوية)
+    if term_hits >= 2:
+        score += 40
+        breakdown['multi_term_bonus'] = 40
+
+    # مطابقة الفئة العامة (أقل وزناً)
+    cat_hits = 0
+    for tok in cat_tokens:
+        t = tok.lower().strip()
+        if not t:
+            continue
+        cat_name = (supplier.category.name_ar if getattr(supplier, 'category_id', None) else '').lower()
+        if t in cat_name or t in subcat_lower or t in services or t in desc:
+            cat_hits += 1
+    cat_pts = cat_hits * 15
+    score += cat_pts
+    breakdown['category_pts'] = cat_pts
+
+    # التقييم + عدد المراجعات
+    rating = float(supplier.rating or 0)
+    reviews = int(supplier.reviews_count or 0)
+    rating_pts = rating * 12
+    review_pts = min(reviews, 300) / 10
+    score += rating_pts + review_pts
+    breakdown['rating_pts'] = round(rating_pts, 1)
+    breakdown['review_pts'] = round(review_pts, 1)
+
+    # عقوبة إذا رُشّح مؤخراً (تنويع قوي)
+    if str(supplier.id) in recent_promo_ids:
+        score -= 1000
+        breakdown['recent_penalty'] = -1000
+
+    # jitter لكسر التعادل
+    jitter = random.uniform(-3, 3)
+    score += jitter
+    breakdown['jitter'] = round(jitter, 2)
+
+    return score, breakdown
+
+
 def find_best_partner(
     category: str,
     exclude_ids: Optional[set] = None,
@@ -128,32 +217,31 @@ def find_best_partner(
     specific_terms: Optional[List[str]] = None,
 ) -> Optional[Dict]:
     """
-    يختار شريكاً مناسباً للفئة الحالية بذكاء وتنويع:
-      1) يحاول المطابقة الدقيقة أولاً (specific_terms مثل "بروست"، "مندي"، "بيتزا")
-         على name/subcategory/services/description.
-      2) لو ما لقى، يفتح البحث على الفئة الأعم (tokens من category).
-      3) يستبعد الشركاء المرشّحين لنفس المستخدم خلال آخر 7 أيام (تنويع).
-      4) يختار عشوائياً من أفضل 5 مرشحين (بدل إعادة نفس الشريك دائماً).
+    يختار **أفضل** شريك للطلب باستخدام نظام نقاط مرجّحة (_score_partner).
+    يعالج تعدد الشركاء في القسم:
+      • يرشّح الأقرب لسياق الطلب (مطابقة النوع في الاسم/التصنيف الفرعي/الخدمات)
+      • يكافئ التقييم وعدد المراجعات
+      • يعاقب التكرار لنفس المستخدم خلال 7 أيام
+      • يحسم التعادل بـ jitter صغير لتنويع طفيف عبر الجلسات
 
     Args:
         category: الفئة الأساسية (مثلاً "مطعم")
         specific_terms: كلمات مفتاحية محددة من طلب المستخدم (مثلاً ["بروست"])
         exclude_ids: معرّفات شركاء يجب استبعادهم
-        user_phone: لتطبيق فلتر "ما رُشّح مؤخراً"
+        user_phone: لتطبيق عقوبة التكرار الحديث
     """
-    import random
     if not category and not specific_terms:
         return None
     try:
         from suppliers.models import Supplier
 
-        # توكنات الفئة (≥ 3 حروف)
         cat_tokens = [t.strip() for t in re.split(r'\s+', (category or '')) if len(t.strip()) >= 3]
         specific_terms = [t.strip() for t in (specific_terms or []) if t and len(t.strip()) >= 2]
 
         exclude_list: Set[str] = set(str(x) for x in (exclude_ids or []))
 
-        # استبعاد الشركاء المرشّحين خلال آخر 7 أيام (تنويع أفضل للمستخدم)
+        # معرّفات الشركاء المرشّحين خلال آخر 7 أيام (لعقوبة، لا استبعاد كامل)
+        recent_promo_ids: Set[str] = set()
         if user_phone:
             try:
                 from .models import PartnerPromotion
@@ -161,49 +249,33 @@ def find_best_partner(
                     user_phone=user_phone,
                     created_at__gte=datetime.utcnow() - timedelta(days=7),
                 ).values_list('partner_id', flat=True)
-                for pid in recent:
-                    exclude_list.add(str(pid))
+                recent_promo_ids = {str(pid) for pid in recent}
             except Exception as e:
-                logger.debug(f"[SEARCH-CTX] promotion exclude failed: {e}")
+                logger.debug(f"[SEARCH-CTX] recent promo fetch failed: {e}")
 
         base_qs = Supplier.objects.filter(is_partner=True, is_active=True)
         if exclude_list:
             base_qs = base_qs.exclude(id__in=list(exclude_list))
 
-        partner = None
-
-        # فلترة المصطلحات المحددة — نزيل العامة (مطعم/كافيه) لأنها ليست "نوعاً محدداً"
         _generic_for_partner = {'مطعم', 'مطاعم', 'كافيه', 'كوفي', 'محل', 'متجر'}
         real_specific_terms = [t for t in specific_terms
                                if t.strip() not in _generic_for_partner]
 
-        # ─── طبقة 1: مطابقة دقيقة بالمصطلحات المحددة (بروست/مندي/بيتزا/...) ───
+        # ─── جمع مرشّحين: لا نلتقط إلا من يطابق النوع المحدد (ضمان عدم التضليل) ───
+        candidates_qs = base_qs
         if real_specific_terms:
             specific_filter = Q()
             for term in real_specific_terms:
                 specific_filter |= (
                     Q(name_ar__icontains=term) |
+                    Q(name_en__icontains=term) |
                     Q(subcategory__name_ar__icontains=term) |
                     Q(services__icontains=term) |
                     Q(description__icontains=term) |
                     Q(agent_notes__icontains=term)
                 )
-            specific_qs = base_qs.filter(specific_filter)
-            # أفضل 5 بالتقييم ثم اختيار عشوائي
-            top_specific = list(specific_qs.distinct().order_by('-rating', '-reviews_count')[:5])
-            if top_specific:
-                partner = random.choice(top_specific)
-                logger.info(f"[SEARCH-CTX] Specific-match partner '{partner.name_ar}' "
-                            f"(terms={real_specific_terms}, pool={len(top_specific)})")
-            else:
-                # المستخدم طلب نوعاً محدداً (بيتزا مثلاً) ولم نجد شريكاً مطابقاً
-                # → لا نحقن شريكاً من فئة عامة لأن ذلك يخدع المستخدم
-                logger.info(f"[SEARCH-CTX] No partner matching specific terms {real_specific_terms} — "
-                            f"skipping partner injection (avoid misleading recommendation)")
-                return None
-
-        # ─── طبقة 2: مطابقة الفئة العامة (فقط إذا لم يحدد المستخدم نوعاً) ───
-        if not partner and cat_tokens and not real_specific_terms:
+            candidates_qs = candidates_qs.filter(specific_filter)
+        elif cat_tokens:
             cat_filter = Q()
             for tok in cat_tokens:
                 cat_filter |= (
@@ -213,42 +285,46 @@ def find_best_partner(
                     Q(services__icontains=tok) |
                     Q(description__icontains=tok)
                 )
-            cat_qs = base_qs.filter(cat_filter)
-            top_cat = list(cat_qs.order_by('-rating', '-reviews_count')[:5])
-            if top_cat:
-                partner = random.choice(top_cat)
-                logger.info(f"[SEARCH-CTX] Category-match partner '{partner.name_ar}' "
-                            f"(tokens={cat_tokens}, pool={len(top_cat)})")
+            candidates_qs = candidates_qs.filter(cat_filter)
 
-        # ─── طبقة 3: تراخي الـ 7 أيام لو كل الشركاء مُستبعدين ───
-        if not partner and (cat_tokens or specific_terms):
+        candidates = list(candidates_qs.distinct()[:30])  # pool موسّع للترجيح
+
+        if not candidates:
+            # لو طلب نوعاً محدداً ولم يوجد شريك مطابق → لا نحقن (تجنّب التضليل)
+            if real_specific_terms:
+                logger.info(f"[SEARCH-CTX] No partner matching specific terms {real_specific_terms} — "
+                            f"skipping injection")
+                return None
+            # لو فئة عامة وكل الشركاء مُستبعدين، نتراخى ونعيد أي شريك بنفس الفئة
             relax_qs = Supplier.objects.filter(is_partner=True, is_active=True)
-            if exclude_ids:
-                relax_qs = relax_qs.exclude(id__in=list(exclude_ids))
-            relax_filter = Q()
-            for term in (specific_terms or []) + cat_tokens:
-                relax_filter |= (
-                    Q(name_ar__icontains=term) |
-                    Q(category__name_ar__icontains=term) |
-                    Q(subcategory__name_ar__icontains=term) |
-                    Q(services__icontains=term) |
-                    Q(description__icontains=term)
-                )
-            relax_qs = relax_qs.filter(relax_filter)
-            # اختر الأقل ترشيحاً مؤخراً (تدوير)
-            try:
-                from .models import PartnerPromotion
-                from django.db.models import Max, OuterRef, Subquery
-                top_relax = list(relax_qs.order_by('-rating', '-reviews_count')[:5])
-                if top_relax:
-                    partner = random.choice(top_relax)
-                    logger.info(f"[SEARCH-CTX] Relaxed partner '{partner.name_ar}' "
-                                f"(no fresh candidate in 7 days)")
-            except Exception:
-                partner = relax_qs.order_by('-rating').first()
+            if cat_tokens:
+                rf = Q()
+                for tok in cat_tokens:
+                    rf |= (Q(category__name_ar__icontains=tok) |
+                           Q(subcategory__name_ar__icontains=tok))
+                relax_qs = relax_qs.filter(rf)
+            candidates = list(relax_qs.distinct()[:20])
+            if not candidates:
+                return None
+            logger.info(f"[SEARCH-CTX] Relaxed fallback: {len(candidates)} candidates")
 
-        if not partner:
+        # ─── ترجيح وترتيب ───
+        scored = [(sup, *_score_partner(sup, real_specific_terms, cat_tokens, recent_promo_ids))
+                  for sup in candidates]
+        scored.sort(key=lambda x: x[1], reverse=True)
+
+        if not scored:
             return None
+
+        best = scored[0]
+        partner = best[0]
+        logger.info(
+            f"[SEARCH-CTX] Best partner: '{partner.name_ar}' score={best[1]:.1f} "
+            f"breakdown={best[2]} | pool_size={len(scored)}"
+        )
+        # سجل أفضل 3 للمتابعة
+        for i, (sup, sc, br) in enumerate(scored[:3]):
+            logger.debug(f"[SEARCH-CTX]   #{i+1} {sup.name_ar}: {sc:.1f}")
 
         return _supplier_to_result_dict(partner, fallback_category=category)
     except Exception as e:
