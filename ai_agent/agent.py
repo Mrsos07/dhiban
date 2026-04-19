@@ -259,9 +259,11 @@ class DhibanAgent:
             if tool_name == "search_suppliers":
                 category_hint = arguments.get("category_name") or ''
                 keywords = [k for k in (arguments.get("keywords") or []) if k]
-                specific_terms = [k for k in keywords if k != category_hint]
+                _generic = {'مطعم', 'مطاعم', 'كافيه', 'كوفي', 'محل', 'متجر'}
+                specific_terms = [k for k in keywords
+                                  if k != category_hint and k.strip() not in _generic]
 
-                # البحث الشلالي: DB أولاً مع تنويع + استبعاد الأسماء المعروضة
+                # البحث الشلالي: DB أولاً (صارم: لو في نوع محدد ولم يتطابق نرجع فارغ)
                 results = search_suppliers(
                     category_name=category_hint,
                     keywords=keywords,
@@ -269,18 +271,26 @@ class DhibanAgent:
                     limit=5,
                     exclude_names=exclusions if exclusions else None,
                     randomize=True,
+                    strict=True,
                 )
                 if results:
                     formatted = format_search_results(
                         {'database_results': results, 'google_results': [], 'total': len(results)}
                     )
-                    # لو الـ category فارغة، استخدم أول keyword كتلميح
                     eff_category = category_hint or (keywords[0] if keywords else '')
                     return _finalize_with_partner(formatted, eff_category, specific_terms=specific_terms)
 
-                # DB فارغة → جرّب Google كـ fallback مع حقن شريك بنفس الفئة
-                q = category_hint or ' '.join(keywords)
-                logger.info(f"[AGENT] search_suppliers empty → falling back to Google: {q}")
+                # DB فارغة → نبحث في Google مباشرة بنفس النوع المحدد.
+                # نضمّن النوع + الفئة في الاستعلام (places.py يضيف "في عنيزة" تلقائياً)
+                # لا فلترة صارمة بعد البحث ولا اقتراح بديل — نعرض ما رجّعه Google كما هو.
+                if specific_terms and category_hint:
+                    q = f"{category_hint} {' '.join(specific_terms)}".strip()
+                elif specific_terms:
+                    q = ' '.join(specific_terms)
+                else:
+                    q = category_hint or ' '.join(keywords)
+                logger.info(f"[AGENT] DB empty → Google search for: '{q}' "
+                            f"(specific_terms={specific_terms})")
                 google_results = search_google_places(
                     query=q, limit=5,
                     exclude_names=exclusions if exclusions else None,
@@ -288,8 +298,18 @@ class DhibanAgent:
                 if google_results:
                     formatted = format_google_results(google_results, q)
                     eff_category = category_hint or (keywords[0] if keywords else '')
+                    # ملاحظة: _finalize_with_partner يحقن شريكاً فقط إذا كان يطابق
+                    # specific_terms فعلاً (find_best_partner صارم). لو ما لقى شريك بيتزا
+                    # ما يحقن أي بديل — وهذا المطلوب.
                     return _finalize_with_partner(formatted, eff_category, specific_terms=specific_terms)
-                return "لم أجد نتائج في قاعدة البيانات ولا في Google Maps."
+                # Google كمان ما رجّع شي — رد صريح بدون اختراع بدائل
+                if specific_terms:
+                    terms_str = ' / '.join(specific_terms)
+                    return (
+                        f"يالغالي، دوّرت في قاعدة البيانات وفي قوقل ماب عن *{terms_str}* "
+                        f"في عنيزة وما لقيت نتائج 😕"
+                    )
+                return "ما لقيت نتائج لطلبك في عنيزة 😕"
 
             elif tool_name == "search_google_places":
                 query = arguments.get("query", "")
@@ -298,12 +318,11 @@ class DhibanAgent:
                 category = category_map.get(place_type, place_type or query)
                 specific_terms = []
                 if query:
-                    # كلمات ≥ 2 حروف داخل الـ query، مع تنظيف كلمات مثل "مطعم"
                     raw_tokens = [t.strip() for t in query.split() if len(t.strip()) >= 2]
                     generic = {'مطعم', 'مطاعم', 'كافيه', 'كوفي', 'محل', 'في', 'عنيزة'}
                     specific_terms = [t for t in raw_tokens if t not in generic]
 
-                # جرّب موردي DB أولاً (شركاء + عاديين) مع الكلمات المحددة — أولوية أعلى من Google
+                # جرّب موردي DB أولاً (شركاء + عاديين) — صارم: لازم يطابق النوع المحدد
                 if specific_terms or category:
                     db_results = search_suppliers(
                         category_name=category,
@@ -311,6 +330,7 @@ class DhibanAgent:
                         limit=5,
                         exclude_names=exclusions if exclusions else None,
                         randomize=True,
+                        strict=True,
                     )
                     if db_results:
                         formatted = format_search_results(
@@ -318,7 +338,10 @@ class DhibanAgent:
                         )
                         return _finalize_with_partner(formatted, category, specific_terms=specific_terms)
 
-                # DB ما فيها شي → Google
+                # DB ما فيها شي → Google مباشرة بنفس الاستعلام، بدون فلترة صارمة
+                # ولا اقتراح بدائل. نثق بترتيب Google للمطابقة النصية.
+                logger.info(f"[AGENT] DB empty → Google search: '{query}' "
+                            f"(specific_terms={specific_terms})")
                 results = search_google_places(
                     query=query,
                     place_type=place_type or None,
@@ -327,6 +350,7 @@ class DhibanAgent:
                 )
                 if results:
                     formatted = format_google_results(results, query)
+                    # find_best_partner صارم: لن يحقن شريكاً غير مطابق للنوع المحدد
                     return _finalize_with_partner(formatted, category, specific_terms=specific_terms)
                 if exclusions:
                     return f"ما لقيت خيارات جديدة غير اللي ذكرتها قبل لـ '{query}' 😕 تبي أوسّع البحث أو أغيّر الكلمات؟"

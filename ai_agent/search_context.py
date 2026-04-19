@@ -172,26 +172,38 @@ def find_best_partner(
 
         partner = None
 
+        # فلترة المصطلحات المحددة — نزيل العامة (مطعم/كافيه) لأنها ليست "نوعاً محدداً"
+        _generic_for_partner = {'مطعم', 'مطاعم', 'كافيه', 'كوفي', 'محل', 'متجر'}
+        real_specific_terms = [t for t in specific_terms
+                               if t.strip() not in _generic_for_partner]
+
         # ─── طبقة 1: مطابقة دقيقة بالمصطلحات المحددة (بروست/مندي/بيتزا/...) ───
-        if specific_terms:
+        if real_specific_terms:
             specific_filter = Q()
-            for term in specific_terms:
+            for term in real_specific_terms:
                 specific_filter |= (
                     Q(name_ar__icontains=term) |
                     Q(subcategory__name_ar__icontains=term) |
                     Q(services__icontains=term) |
-                    Q(description__icontains=term)
+                    Q(description__icontains=term) |
+                    Q(agent_notes__icontains=term)
                 )
             specific_qs = base_qs.filter(specific_filter)
             # أفضل 5 بالتقييم ثم اختيار عشوائي
-            top_specific = list(specific_qs.order_by('-rating', '-reviews_count')[:5])
+            top_specific = list(specific_qs.distinct().order_by('-rating', '-reviews_count')[:5])
             if top_specific:
                 partner = random.choice(top_specific)
                 logger.info(f"[SEARCH-CTX] Specific-match partner '{partner.name_ar}' "
-                            f"(terms={specific_terms}, pool={len(top_specific)})")
+                            f"(terms={real_specific_terms}, pool={len(top_specific)})")
+            else:
+                # المستخدم طلب نوعاً محدداً (بيتزا مثلاً) ولم نجد شريكاً مطابقاً
+                # → لا نحقن شريكاً من فئة عامة لأن ذلك يخدع المستخدم
+                logger.info(f"[SEARCH-CTX] No partner matching specific terms {real_specific_terms} — "
+                            f"skipping partner injection (avoid misleading recommendation)")
+                return None
 
-        # ─── طبقة 2: مطابقة الفئة العامة لو ما لقينا مطابقة دقيقة ───
-        if not partner and cat_tokens:
+        # ─── طبقة 2: مطابقة الفئة العامة (فقط إذا لم يحدد المستخدم نوعاً) ───
+        if not partner and cat_tokens and not real_specific_terms:
             cat_filter = Q()
             for tok in cat_tokens:
                 cat_filter |= (

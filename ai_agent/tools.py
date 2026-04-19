@@ -26,13 +26,16 @@ def search_suppliers(
     limit: int = 5,
     exclude_names: Optional[set] = None,
     randomize: bool = True,
+    strict: bool = True,
 ) -> List[Dict]:
     """
     البحث عن الموردين في قاعدة البيانات بذكاء:
-      • مطابقة دقيقة بالكلمات المفتاحية أولاً (مثلاً "بروست") ثم الفئة العامة.
-      • اختيار عشوائي من أفضل 10-15 مرشّح (بدل إعادة نفس المورد دائماً).
-      • استبعاد الأسماء المعروضة سابقاً للمستخدم (exclude_names).
-      • الشركاء (is_partner=True) يُرتّبون قبل غيرهم بتقييم أعلى.
+      • مطابقة دقيقة بالكلمات المفتاحية (مثلاً "بيتزا") — الكلمة يجب أن تظهر في
+        الاسم/الوصف/الخدمات/التصنيف الفرعي.
+      • اختيار عشوائي من أفضل المرشحين مع أولوية للتقييم والشركاء.
+      • استبعاد الأسماء المعروضة سابقاً (exclude_names).
+      • strict=True (افتراضي): لو في keywords محددة ولم تتطابق، نرجع [] ولا نستبدل
+        بنتائج عامة من نفس الفئة — هذا يمنع مثلاً إرجاع مطعم مندي لمن طلب بيتزا.
     """
     import random
 
@@ -42,6 +45,11 @@ def search_suppliers(
 
     keywords = [k for k in (keywords or []) if k and len(k.strip()) >= 2]
     exclude_lower = {n.strip().lower() for n in (exclude_names or set())}
+
+    # لو الكلمة المفتاحية هي نفس التصنيف العام (مثل "مطعم") نعتبرها غير محددة
+    generic_terms = {'مطعم', 'مطاعم', 'كافيه', 'كوفي', 'محل', 'متجر', 'شركة'}
+    specific_kws = [k for k in keywords if k.strip() not in generic_terms
+                    and (not category_name or k.strip() != category_name.strip())]
 
     # ─── طبقة 1: مطابقة دقيقة بالكلمات المفتاحية ───
     primary_qs = base
@@ -53,7 +61,8 @@ def search_suppliers(
                 Q(name_en__icontains=kw) |
                 Q(description__icontains=kw) |
                 Q(services__icontains=kw) |
-                Q(subcategory__name_ar__icontains=kw)
+                Q(subcategory__name_ar__icontains=kw) |
+                Q(agent_notes__icontains=kw)
             )
         primary_qs = primary_qs.filter(kw_filter)
 
@@ -67,16 +76,27 @@ def search_suppliers(
 
     # جمع أفضل المرشحين (تجمع أوسع للعشوائية)
     pool_size = max(limit * 3, 10)
-    candidates = list(primary_qs.order_by('-is_partner', '-rating', '-reviews_count')[:pool_size])
+    candidates = list(primary_qs.distinct().order_by('-is_partner', '-rating', '-reviews_count')[:pool_size])
 
-    # ─── fallback: لو ما حصلنا شي وفيه keywords، نوسّع على الفئة فقط ───
-    if not candidates and keywords and category_name:
+    # ─── fallback: نوسّع للفئة فقط — لكن **ممنوع** لو المستخدم حدّد نوع (بيتزا/مندي…)
+    # هذا يمنع إرجاع مطعم مندي لمن طلب بيتزا
+    if not candidates and category_name and not specific_kws:
         fallback_qs = base.filter(
             Q(category__name_ar__icontains=category_name) |
             Q(category__name_en__icontains=category_name) |
             Q(subcategory__name_ar__icontains=category_name)
         )
-        candidates = list(fallback_qs.order_by('-is_partner', '-rating')[:pool_size])
+        candidates = list(fallback_qs.distinct().order_by('-is_partner', '-rating')[:pool_size])
+    elif not candidates and specific_kws and not strict:
+        # وضع غير صارم: نسمح بالتوسيع مع تسجيل ملاحظة
+        fallback_qs = base
+        if category_name:
+            fallback_qs = fallback_qs.filter(
+                Q(category__name_ar__icontains=category_name) |
+                Q(subcategory__name_ar__icontains=category_name)
+            )
+        candidates = list(fallback_qs.distinct().order_by('-is_partner', '-rating')[:pool_size])
+        logger.info(f"[SEARCH] no match for specific_kws={specific_kws}, relaxed fallback used")
 
     # استبعاد الأسماء المعروضة مسبقاً للمستخدم (لتنوّع البدائل)
     if exclude_lower:
