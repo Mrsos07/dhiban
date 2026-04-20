@@ -436,20 +436,68 @@ class DhibanAgent:
             logger.error(f"Tool execution error: {e}", exc_info=True)
             return f"حدث خطأ أثناء البحث."
     
+    @staticmethod
+    def _response_has_real_results(text: str) -> bool:
+        """
+        يكشف هل الرد فعلاً يعرض نتائج بحث (روابط خرائط/هاتف/تقييم).
+        يُستخدم لضمان عدم حقن ترشيحات على ردود اعتذار أو استيضاح.
+        """
+        if not text:
+            return False
+        import re
+        return bool(
+            re.search(r'google\.com/maps|maps\.google\.com|goo\.gl/maps|maps\.app', text)
+            or re.search(r'⭐\s*\d', text)
+            or re.search(r'📞\s*[\d\+]', text)
+            or re.search(r'\b05\d{8}\b', text)
+        )
+
+    @staticmethod
+    def _response_is_apology_or_clarification(text: str) -> bool:
+        """
+        يكشف هل الرد اعتذار (خارج النطاق، لا نتائج) أو سؤال استيضاح.
+        في كلا الحالتين يجب ألّا نحقن ترشيحاً.
+        """
+        if not text:
+            return True
+        t = text.strip()
+        # اعتذار خارج النطاق / لا نتائج
+        apology_markers = ['ما لقيت', 'لم أجد', 'للأسف', 'ما لقينا', 'ما وجدت',
+                           'أخدمك في عنيزة', 'خدمتي في عنيزة', 'عنيزة بس',
+                           'عنيزة فقط', 'محصور في عنيزة']
+        if any(m in t for m in apology_markers):
+            return True
+        # سؤال استيضاح واضح (أول 500 حرف فيه علامة استفهام ولا توجد نتائج بحث)
+        head = t[:500]
+        if '؟' in head and not DhibanAgent._response_has_real_results(t):
+            return True
+        return False
+
     def _inject_promotion(self, bot_response: str, user_message: str, user_id: Optional[str]) -> str:
         """
-        يحقن ترشيح شريك ذكي بعد الرد في حال لم يكن الشريك مدمجاً أصلاً في النتائج.
-        الشريك الأساسي يُحقن داخل نتائج البحث عبر _execute_tool، فإذا سبق حقنه نتخطى.
-        هذا الـ hook يعمل فقط للردود الحوارية البحتة (بدون tool call).
+        يحقن ترشيحاً ذكياً بعد الرد الأساسي إذا:
+          1) المستخدم معروف،
+          2) لم يُحقَن ترشيح مميّز أصلاً (ترشيحنا المميّز / followup معلّق)،
+          3) الرد يعرض نتائج بحث فعلية (روابط/تقييم/هاتف)،
+          4) ليس ردّ اعتذار أو استيضاح.
+        بدون هذه الشروط نُرجع الرد كما هو — لا ترشيحات فوق ردود التحية/الاعتذار/الأسئلة.
         """
         try:
             if not user_id or not bot_response:
                 return bot_response
-            # لو الرد أصلاً يحتوي شريكاً معتمداً (من نتائج الأداة)، لا نضيف ترويجاً ثانياً
-            if 'ترشيحنا المميز' in bot_response or 'شريك معتمد' in bot_response:
+            # لو الرد أصلاً يحتوي ترشيحاً مميّزاً (من نتائج الأداة)، لا نضيف ترشيحاً ثانياً
+            if 'ترشيحنا المميّز' in bot_response or 'ترشيحنا المميز' in bot_response:
                 return bot_response
-            # لو فيه شريك معلّق كرسالة ثانية، لا نكرر عبر maybe_promote
+            # لو فيه ترشيح معلّق كرسالة ثانية، لا نكرر عبر maybe_promote
             if self._pending_partner_followup:
+                return bot_response
+            # 🛡️ حارس حاسم: لا نحقن ترشيحاً فوق اعتذار أو سؤال استيضاح
+            if self._response_is_apology_or_clarification(bot_response):
+                logger.debug("[AGENT] skip promo: apology/clarification response")
+                return bot_response
+            # 🛡️ حارس حاسم: لا نحقن إلا فوق رد فيه نتائج بحث حقيقية
+            if not self._response_has_real_results(bot_response):
+                logger.debug("[AGENT] skip promo: no real search results in response")
                 return bot_response
             promo = maybe_promote(user_id, user_message or '', bot_response)
             if promo:
