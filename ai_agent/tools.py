@@ -562,7 +562,7 @@ def format_supplier_response(supplier: Dict) -> str:
         response += f"   📍 {address}\n"
     
     if supplier.get('is_partner'):
-        response += "   ✅ شريك معتمد\n"
+        response += "   ✅ مورد مرشّح\n"
     
     if supplier.get('is_open') is not None:
         status = "✅ مفتوح" if supplier['is_open'] else "❌ مغلق"

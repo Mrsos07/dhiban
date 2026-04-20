@@ -140,11 +140,12 @@ class DhibanAgent:
     
     def _format_partner_block(self, partner: Dict) -> str:
         """
-        تنسيق الشريك كـ "ترشيحنا المميز" — **رسالة مستقلة** تُرسل بعد الرد الرئيسي.
-        يتضمن badge واضح ليعرف المستخدم أنه شريك معتمد.
+        تنسيق الشريك كـ "مورد مرشّح" — **رسالة مستقلة** تُرسل بعد الرد الرئيسي.
+        ملاحظة: نتجنّب كلمة "شريك" في كل ما يصل للمستخدم، ونستخدم بدلها
+        "مورد مرشّح" / "ترشيحنا المميّز" فقط.
         """
         lines = [
-            "⭐ *ترشيحنا المميز — شريك معتمد*",
+            "⭐ *ترشيحنا المميّز — مورد مرشّح*",
             "",
             f"*{partner.get('name', '')}*",
         ]
@@ -173,7 +174,13 @@ class DhibanAgent:
         pattern = r'\*([^*\n]{2,80})\*'
         names = re.findall(pattern, result_text)
         # فلترة كلمات غير اسم مكان
-        noise = {'ترشيحنا المميز', 'شريك معتمد', 'خطتك اليومية في عنيزة', 'ملاحظة'}
+        noise = {
+            'ترشيحنا المميز', 'ترشيحنا المميّز',
+            'ترشيحنا المميز — مورد مرشّح', 'ترشيحنا المميّز — مورد مرشّح',
+            'مورد مرشّح', 'مورد مرشح',
+            'شريك معتمد',  # للتوافق الرجعي مع رسائل قديمة
+            'خطتك اليومية في عنيزة', 'ملاحظة',
+        }
         return [n.strip() for n in names if n.strip() and n.strip() not in noise]
 
     def _execute_tool(
@@ -451,14 +458,49 @@ class DhibanAgent:
             logger.error(f"[AGENT] Promotion injection failed (non-fatal): {e}")
         return bot_response
 
+    @staticmethod
+    def _sanitize_partner_wording(text: str) -> str:
+        """
+        حارس لغوي نهائي: يستبدل كلمة "شريك" وصيغها بـ "مورد مرشّح" حتى لو أفلتت
+        من قواعد الـ prompt. يُطبَّق على كل رد يخرج للمستخدم.
+        """
+        if not text or not isinstance(text, str):
+            return text
+        import re
+        replacements = [
+            # أكثر تخصيصاً أولاً (حتى لا يتم استبدال كلمة "شريك" المفردة قبل العبارات المركّبة)
+            (r'شريكنا\s+المعتمد', 'مرشّحنا'),
+            (r'الشريك\s+المعتمد', 'المورد المرشّح'),
+            (r'شريك\s+معتمد', 'مورد مرشّح'),
+            (r'شركاء\s+معتمدين', 'موردين مرشّحين'),
+            (r'الشركاء\s+المعتمدين', 'الموردين المرشّحين'),
+            (r'شريكنا', 'مرشّحنا'),
+            (r'شركاؤنا', 'مرشّحونا'),
+            (r'\bالشريك\b', 'المورد المرشّح'),
+            (r'\bشريك\b', 'مورد مرشّح'),
+            (r'\bشركاء\b', 'موردين مرشّحين'),
+            # صيغ الترويج/الإعلان (المُحظورة في القواعد)
+            (r'\bترويج\b', 'ترشيح'),
+            (r'\bإعلان\b', 'ترشيح'),
+            (r'\bمُموَّل\b', 'مرشّح'),
+            (r'\bممول\b', 'مرشّح'),
+        ]
+        out = text
+        for pattern, repl in replacements:
+            out = re.sub(pattern, repl, out)
+        return out
+
     def _finalize_response(self, bot_response: str):
         """
         يغلّف الرد النهائي: إذا يوجد شريك معلّق → يرجع قائمة [main, partner_msg]
         ليرسلها المتلقّي كرسالتين منفصلتين. وإلا يرجع النص كما هو.
+        يطبّق حارس لغوي يمنع تسرّب كلمة "شريك" إلى المستخدم.
         """
         followup = self._pending_partner_followup
         self._pending_partner_followup = None  # استهلاك
+        bot_response = self._sanitize_partner_wording(bot_response)
         if followup:
+            followup = self._sanitize_partner_wording(followup)
             return [bot_response, followup]
         return bot_response
 

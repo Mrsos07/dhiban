@@ -188,10 +188,10 @@ def _pick_partner(category_name: str, user_phone: str) -> Optional[Dict]:
 def _format_promotion(partner: Dict) -> str:
     """صياغة رسالة الترشيح بأسلوب طبيعي دافئ — بدون إحساس إعلان مزعج."""
     templates = [
-        "🤝 *وبالمناسبة يالغالي* — أنصحك بشريكنا المعتمد *{name}* في {category}، تقييمه {rating}/5 وناسه يمدحونه.",
-        "💡 *فكرة* — لو تبي جربة ممتازة، شريكنا *{name}* ({category}) من أحسن اللي في عنيزة، ⭐ {rating}/5.",
-        "✨ *بنصيحة صديق* — *{name}* شريك معتمد عندنا في {category}، تقييمه {rating}/5 وما يخيبك.",
-        "🌟 *بالذمّة* — شريكنا *{name}* متميز في {category}، ⭐ {rating}/5. تستاهل تجربه.",
+        "🤝 *وبالمناسبة يالغالي* — أنصحك بـ *{name}* في {category}، تقييمه {rating}/5 وناسه يمدحونه.",
+        "💡 *فكرة* — لو تبي جربة ممتازة، *{name}* ({category}) من أحسن اللي في عنيزة، ⭐ {rating}/5.",
+        "✨ *بنصيحة صديق* — *{name}* من الأسماء المرشّحة عندنا في {category}، تقييمه {rating}/5 وما يخيبك.",
+        "🌟 *بالذمّة* — *{name}* متميز في {category}، ⭐ {rating}/5. تستاهل تجربه.",
     ]
     base = random.choice(templates).format(
         name=partner['name'],
