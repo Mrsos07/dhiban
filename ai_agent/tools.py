@@ -139,17 +139,32 @@ def search_suppliers(
                 q = urllib.parse.quote(f"{name} عنيزة")
                 maps_url = f"https://maps.google.com/maps?q={q}"
         
+        # الخدمات: JSONField قد تكون list أو str
+        services_raw = supplier.services or []
+        if isinstance(services_raw, list):
+            services_list = [str(s).strip() for s in services_raw if str(s).strip()]
+        else:
+            services_list = [s.strip() for s in str(services_raw).split(',') if s.strip()]
+
         results.append({
             'id': str(supplier.id),
             'name': supplier.name_ar,
+            'name_en': supplier.name_en or '',
             'category': supplier.category.name_ar if supplier.category else '',
+            'subcategory': supplier.subcategory.name_ar if supplier.subcategory_id else '',
             'rating': float(supplier.rating),
+            'reviews_count': int(supplier.reviews_count or 0),
             'phone': supplier.get_primary_phone() or '',
             'location': supplier.location,
             'maps_url': maps_url,
             'is_partner': supplier.is_partner,
-            'description': supplier.description[:100] if supplier.description else '',
-            'source': 'database'
+            'is_verified': bool(supplier.is_verified),
+            # كامل الوصف (لا قصّ) — الوكيل يحتاج يقرأه كامل قبل الترشيح
+            'description': (supplier.description or '').strip(),
+            'services': services_list,
+            # ملاحظات خاصة بالوكيل (يكتبها المدير لتوجيه الترشيح)
+            'agent_notes': (supplier.agent_notes or '').strip(),
+            'source': 'database',
         })
     
     return results
@@ -499,10 +514,43 @@ def build_maps_url(supplier: Dict) -> str:
 
 
 def format_supplier_response(supplier: Dict) -> str:
-    """تنسيق رد المورد للمستخدم"""
+    """
+    تنسيق رد المورد للمستخدم + للوكيل.
+    يُظهر التصنيف الفرعي والوصف وملاحظات الوكيل والخدمات بحيث يقرأها
+    LLM كتفاصيل سياقية قبل أن يرشّح أو يُبرز المورد في رده النهائي.
+    """
     response = f"*{supplier.get('name', '')}*\n"
-    response += f"   ⭐ {supplier.get('rating', 0)}/5\n"
-    
+    response += f"   ⭐ {supplier.get('rating', 0)}/5"
+    reviews_n = supplier.get('reviews_count') or supplier.get('total_ratings')
+    if reviews_n:
+        response += f" ({reviews_n} تقييم)"
+    response += "\n"
+
+    # التصنيف الفرعي — يوضّح للوكيل نوع تخصص المورد قبل الترشيح
+    subcat = (supplier.get('subcategory') or '').strip()
+    if subcat:
+        response += f"   🏷️ التخصص: {subcat}\n"
+
+    # الخدمات — أول 4 عناصر تكفي لإعطاء فكرة
+    services = supplier.get('services') or []
+    if isinstance(services, list) and services:
+        services_str = '، '.join(str(s) for s in services[:4])
+        if len(services) > 4:
+            services_str += '…'
+        response += f"   🛠️ الخدمات: {services_str}\n"
+
+    # الوصف — مقطوع لـ 180 حرف في العرض لكنه يصل للـ LLM كامل عبر الـ dict
+    desc = (supplier.get('description') or '').strip()
+    if desc:
+        short_desc = desc if len(desc) <= 180 else desc[:180].rstrip() + '…'
+        response += f"   📝 {short_desc}\n"
+
+    # ملاحظات الوكيل — توجّه الـ LLM بخصائص مميزة (عائلي، يوصل، جلسات خارجية…)
+    notes = (supplier.get('agent_notes') or '').strip()
+    if notes:
+        short_notes = notes if len(notes) <= 160 else notes[:160].rstrip() + '…'
+        response += f"   💡 {short_notes}\n"
+
     if supplier.get('phone'):
         response += f"   📞 {supplier['phone']}\n"
     
